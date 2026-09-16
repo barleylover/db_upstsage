@@ -7,15 +7,20 @@ from app.domain.models import (
     ChangeDocument,
     ChangeSpec,
     ConfirmSpecRequest,
+    DocumentReviewResult,
     GenerateChangeDocumentRequest,
     InterpretChangeRequest,
+    ReviewChangeDocumentRequest,
     ReviewRequest,
     ReviewResult,
     SqlPack,
     UpdateSqlArtifactRequest,
 )
 
+
+
 from app.repositories.change_repository import ChangeRepository
+from app.services.change_document_review_service import review_change_document
 from app.services.change_document_service import generate_change_document
 from app.services.review_service import review_change
 from app.services.solar_client import SolarClient
@@ -133,3 +138,16 @@ def create_change_document(
     repository: ChangeRepository = Depends(get_repository),
 ) -> ChangeDocument:
     return generate_change_document(repository, spec_id, payload)
+
+
+@api_router.post(
+    "/{spec_id}/change-document/review",
+    response_model=DocumentReviewResult,
+    summary="Review a submitted change document against the current spec and SQL pack",
+)
+def review_change_document_api(
+    spec_id: str,
+    payload: ReviewChangeDocumentRequest,
+    repository: ChangeRepository = Depends(get_repository),
+) -> DocumentReviewResult:
+    return review_change_document(repository, spec_id, payload)
