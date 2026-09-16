@@ -1,14 +1,23 @@
 <template>
   <div class="document-page">
-    <div class="page-head">
-      <div class="head-left">
-        <button class="btn" @click="$router.back()">← 검토</button>
-        <span class="head-title">04 변경 문서</span>
-        <span class="mono">양식 {{ templateName ?? '기본 변경 신청서' }}</span>
-        <span class="mono">기준: v{{ specVersion }} · rev {{ sqlRevision }}</span>
-        <span class="mono">생성일: {{ createdAt ?? '—' }}</span>
-        <span class="badge" :class="regenerateBadgeClass">{{ regenerateBadgeLabel }}</span>
-        <span class="badge" :class="mismatchBadgeClass">불일치 {{ mismatchCount }}</span>
+    <div class="document-header">
+      <div class="document-header-left">
+        <span class="document-bread mono">홈</span>
+        <span class="document-bread-sep">/</span>
+        <span class="document-bread mono">01 명세 확정</span>
+        <span class="document-bread-sep">/</span>
+        <span class="document-bread mono">02 SQL 팩</span>
+        <span class="document-bread-sep">/</span>
+        <span class="document-bread mono">03 검토</span>
+        <span class="document-bread-sep">/</span>
+        <span class="document-bread mono">04 변경 문서</span>
+      </div>
+      <div class="document-meta" v-if="documentData">
+        <span class="document-meta-item mono">{{ templateName }}</span>
+        <span class="document-meta-item mono">기준 v{{ specVersion }} · rev {{ sqlRevision }}</span>
+        <span class="document-meta-item mono">생성 {{ formattedAt }}</span>
+        <span v-if="needsRegenerate" class="chip chip-warning">재생성 필요</span>
+        <span v-if="mismatchCount > 0" class="chip chip-danger">불일치 {{ mismatchCount }}</span>
       </div>
     </div>
 
@@ -52,43 +61,40 @@
               <tr v-for="(row, idx) in rows" :key="idx" :class="{ 'mismatch': row.mismatch }">
                 <td><span class="row-label">{{ row.label }}</span></td>
                 <td class="mono">
-                  <template v-if="editableRowId === idx">
-                    <textarea class="field-textarea mono" rows="3" v-model="editingValue" @blur="commitEdit(idx)" @keydown.enter.prevent="commitEdit(idx)"></textarea>
+                  <template v-if="row.isSql && row.value">
+                    <textarea class="sql-textarea" rows="3" :value="row.value" readonly></textarea>
                   </template>
                   <template v-else>
-                    <span class="row-value mono">{{ row.value }}</span>
-                    <button class="btn small" @click="startEdit(idx)">편집</button>
+                    <span class="row-value">{{ row.value }}</span>
                   </template>
                 </td>
-                <td><span class="source-label">{{ row.source }}</span></td>
+                <td>
+                  <span class="chip" :class="row.sourceClass">{{ row.sourceLabel }}</span>
+                </td>
               </tr>
             </tbody>
           </table>
+          <div v-if="mismatchCount > 0" class="mismatch-note">
+            <span class="mono">불일치: 사용자가 편집한 값 vs 현재 spec</span>
+          </div>
         </section>
       </div>
 
-      <div class="export-bar">
-        <button class="btn primary" @click="copyMarkdown">Markdown</button>
-        <button class="btn primary" @click="copyJson">JSON</button>
-        <button class="btn primary" @click="copyAll">전체 복사</button>
-      </div>
-
-      <div v-if="previewOpen" class="preview-card card">
-        <div class="preview-head">
-          <span class="preview-title">미리보기</span>
-          <button class="btn small" @click="previewOpen = false">닫기</button>
-        </div>
-        <pre class="preview-body mono">{{ previewText }}</pre>
+      <div class="document-footer">
+        <button class="btn outline" @click="regenerate" :disabled="pending || !specId">선택한 양식으로 다시 생성</button>
+        <button class="btn primary" @click="reviewAgain" :disabled="!specId">문서까지 다시 검토</button>
+        <button class="btn" @click="goExport" :disabled="!specId">내보내기 →</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { generateChangeDocument, type ChangeDocument } from '@/api/client'
 import { useAppStore } from '@/stores/app'
+import { documentFieldSourceLabel, isSqlField, type TemplateId } from '@/services/documentFields'
 
 const router = useRouter()
 const store = useAppStore()
@@ -96,18 +102,28 @@ const store = useAppStore()
 const specId = computed(() => store.currentSpecId)
 const documentData = computed(() => store.document)
 const pending = ref(false)
-const previewOpen = ref(false)
-const previewText = ref('')
-const editingValue = ref('')
-const editableRowId = ref<number | null>(null)
+const selectedTemplateId = ref<TemplateId>('default')
+
+const templates = computed(() => store.documentTemplates)
 
 const specVersion = computed(() => store.spec?.version ?? documentData.value?.specVersion ?? 1)
 const sqlRevision = computed(() => store.sqlPack?.revision ?? documentData.value?.sqlPackRevision ?? 0)
-const createdAt = computed(() => documentData.value?.generatedAt ?? '—')
-const templateName = computed(() => documentData.value?.templateName ?? store.documentTemplates.find((t) => t.id === selectedTemplateId.value)?.name ?? '기본 변경 신청서')
+const createdAt = computed(() => documentData.value?.generatedAt ?? '')
+const formattedAt = computed(() => {
+  if (!createdAt.value) return '—'
+  try {
+    const d = new Date(createdAt.value)
+    return d.toISOString().slice(0, 10)
+  } catch {
+    return createdAt.value
+  }
+})
 
-const selectedTemplateId = ref('default')
-const templates = computed(() => store.documentTemplates)
+const templateName = computed(() => {
+  if (documentData.value) return documentData.value.templateName
+  const t = templates.value.find((t) => t.id === selectedTemplateId.value)
+  return t?.name ?? '기본 변경 신청서'
+})
 
 const rows = computed(() => {
   if (!documentData.value) return []
@@ -116,60 +132,110 @@ const rows = computed(() => {
 
 const mismatchCount = computed(() => rows.value.filter((r) => r.mismatch).length)
 
-const regenerateBadgeClass = computed(() => {
-  if (mismatchCount.value > 0) return 'badge-danger'
-  if (!documentData.value?.generatedAt) return 'badge-warning'
-  return ''
+const needsRegenerate = computed(() => {
+  if (!documentData.value) return false
+  if (!store.spec) return false
+  if (!store.sqlPack) return false
+  if (documentData.value.specVersion !== store.spec.version) return true
+  if (documentData.value.contentHash !== store.spec.contentHash) return true
+  if (documentData.value.sqlPackRevision !== store.sqlPack.revision) return true
+  return false
 })
-const regenerateBadgeLabel = computed(() => {
-  if (mismatchCount.value > 0) return '불일치 있음'
-  if (!documentData.value?.generatedAt) return '생성 필요'
-  return '정상'
-})
-const mismatchBadgeClass = computed(() => (mismatchCount.value > 0 ? 'badge-danger' : ''))
 
 function mapDocumentToRows(doc: ChangeDocument) {
   return doc.fields.map((f) => {
-    const mismatch = detectMismatch(f)
+    const isEditMismatch = isFieldMismatch(f)
+    const value = formatFieldValue(f)
     return {
       label: f.label,
-      value: f.value ?? '·',
-      source: f.source ?? '—',
-      mismatch,
+      value,
+      rawValue: f.value,
+      isSql: isSqlField(f.key),
+      sourceLabel: documentFieldSourceLabel(f.source),
+      sourceClass: sourceClass(f.source),
+      mismatch: isEditMismatch || needsRegenerate.value,
     }
   })
 }
 
-function detectMismatch(f: ChangeDocument['fields'][0]): boolean {
-  if (!store.spec) return false
-  if (f.key === 'targetTable' && f.value !== store.spec.targetTable) return true
-  if (f.key === 'operation' && f.value !== store.spec.operation) return true
-  if (f.key === 'database' && f.value !== store.spec.database) return true
-  if (f.key === 'schema' && f.value !== store.spec.schema) return true
-  return false
+function isFieldMismatch(f: ChangeDocument['fields'][0]): boolean {
+  if (!store.editableDocumentValues) return false
+  const edit = store.editableDocumentValues[f.key]
+  if (edit === undefined) return false
+  const current = formatFieldValue(f)
+  return edit !== current
 }
 
-function startEdit(idx: number) {
-  const row = rows.value[idx]
-  if (!row) return
-  editingValue.value = row.value
-  editableRowId.value = idx
+function formatFieldValue(f: ChangeDocument['fields'][0]): string {
+  const value = f.value
+  if (value === null || value === undefined) return '·'
+  if (typeof value === 'string') return value
+  if (f.key === 'predicates' && Array.isArray(value)) {
+    return formatPredicates(value)
+  }
+  if (f.key === 'mutations' && Array.isArray(value)) {
+    return formatMutations(value)
+  }
+  if (f.key === 'identityKeyColumns' && Array.isArray(value)) {
+    return (value as unknown[]).join(', ')
+  }
+  if (typeof value === 'object') {
+    if (Array.isArray(value)) {
+      if (value.length && typeof value[0] === 'object') {
+        return value.map(formatPredicate).join('\n')
+      }
+    }
+    return JSON.stringify(value)
+  }
+  return String(value)
 }
 
-function commitEdit(idx: number) {
-  if (editableRowId.value !== idx) return
-  const row = rows.value[idx]
-  if (!row) return
-  // 문서 재생성 없이 편집 표시를 유지하는 용도. 실제 저장은 regenerate로.
-  editableRowId.value = null
+function formatPredicate(item: unknown): string {
+  const o = item as Record<string, unknown> | undefined
+  if (!o) return '·'
+  const column = String(o.column ?? '')
+  const operator = String(o.operator ?? '')
+  const value = o.value
+  const valueText = formatValueText(value)
+  if (operator === 'IS_NULL' || operator === 'IS_NOT_NULL') {
+    return `${column} ${operator.replace('_', ' ')}`
+  }
+  return `${column} ${operator} ${valueText}`
+}
+
+function formatPredicates(items: unknown[]): string {
+  return items.map(formatPredicate).join('\n')
+}
+
+function formatMutations(items: unknown[]): string {
+  return items.map((item) => {
+    const o = item as Record<string, unknown> | undefined
+    if (!o) return '·'
+    return `${o.column} = ${formatValueText(o.value)}`
+  }).join('\n')
+}
+
+function formatValueText(value: unknown): string {
+  if (value === null || value === undefined) return '—'
+  if (typeof value === 'string') return value
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (typeof value === 'number') return String(value)
+  return JSON.stringify(value)
+}
+
+function sourceClass(source: string): string {
+  if (source === 'CHANGE_SPEC') return 'chip-teal'
+  if (source === 'SQL_PACK') return 'chip-teal'
+  return 'chip'
 }
 
 async function regenerate() {
   if (!specId.value) return
   pending.value = true
   try {
-    const doc = await generateChangeDocument(specId.value, selectedTemplateId.value)
+    const doc = await generateChangeDocument(specId.value, templates.value.find((t) => t.id === selectedTemplateId.value)?.name ?? 'DEFAULT')
     store.setDocumentData(doc)
+    store.editableDocumentValues = {}
   } catch (err) {
     console.error(err)
   } finally {
@@ -187,45 +253,11 @@ function goExport() {
   router.push(`/spec/${specId.value}/export`)
 }
 
-function copyMarkdown() {
-  previewText.value = buildMarkdown()
-  previewOpen.value = true
-}
-
-function copyJson() {
-  previewText.value = JSON.stringify(documentData.value ?? {}, null, 2)
-  previewOpen.value = true
-}
-
-function copyAll() {
-  previewText.value = buildMarkdown() + '\n\n---\n\n' + JSON.stringify(documentData.value ?? {}, null, 2)
-  previewOpen.value = true
-}
-
-function buildMarkdown(): string {
-  if (!documentData.value) return ''
-  const lines = ['# 변경 문서', '', `**생성일:** ${documentData.value.generatedAt}`, `**양식:** ${documentData.value.templateName}`, `**기준:** v${specVersion.value} · rev ${sqlRevision.value}`, '', '## 항목', '']
-  for (const f of documentData.value.fields) {
-    lines.push(`### ${f.label}`)
-    lines.push(f.value ?? '·')
-    lines.push('')
+onMounted(() => {
+  if (documentData.value && !documentData.value.generatedAt) {
+    regenerate()
   }
-  lines.push('## 출처', '')
-  for (const f of documentData.value.fields) {
-    lines.push(`- ${f.label}: ${f.source ?? '—'}`)
-  }
-  return lines.join('\n')
-}
-
-watch(
-  () => documentData.value,
-  () => {
-    if (documentData.value && !documentData.value.generatedAt) {
-      regenerate()
-    }
-  },
-  { immediate: true },
-)
+})
 </script>
 
 <style scoped>
@@ -233,7 +265,7 @@ watch(
   max-width: 1180px;
 }
 
-.page-head {
+.document-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -242,15 +274,32 @@ watch(
   gap: 10px;
 }
 
-.head-left {
+.document-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.head-title {
-  font-size: 20px;
-  font-weight: 600;
+.document-bread {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.document-bread-sep {
+  color: var(--text-faint);
+}
+
+.document-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.document-meta-item {
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .empty-state-card {
@@ -271,12 +320,16 @@ watch(
 
 .form-card {
   padding: 18px;
-  background: var(--panel);
 }
 
 .body-card {
   padding: 18px;
-  background: var(--panel);
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
 }
 
 .row-label {
@@ -284,20 +337,12 @@ watch(
   font-weight: 500;
 }
 
-.source-label {
-  color: var(--text-muted);
-  font-size: 12px;
+.row-value {
+  display: block;
+  word-break: break-word;
 }
 
-.mismatch {
-  background: #fbe7ea;
-}
-
-.mismatch td {
-  color: var(--danger);
-}
-
-.field-textarea {
+.sql-textarea {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -306,11 +351,50 @@ watch(
   font-size: 12px;
   resize: vertical;
   margin-top: 6px;
+  background: var(--bg);
+  color: var(--text);
 }
 
-.row-value {
-  display: block;
-  margin-right: 8px;
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.mismatch {
+  background: var(--danger-bg);
+}
+
+.mismatch td {
+  color: var(--danger-text);
+}
+
+.mismatch-note {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--danger-text);
 }
 
 .doc-actions {
@@ -320,41 +404,13 @@ watch(
   margin-top: 12px;
 }
 
-.export-bar {
+.document-footer {
   display: flex;
   gap: 8px;
   margin-top: 16px;
   flex-wrap: wrap;
-}
-
-.preview-card {
-  margin-top: 16px;
-  padding: 16px;
-  background: var(--panel);
-}
-
-.preview-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.preview-title {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.preview-body {
-  background: var(--bg);
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  padding: 14px;
-  max-height: 400px;
-  overflow: auto;
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-all;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
 }
 
 .card {

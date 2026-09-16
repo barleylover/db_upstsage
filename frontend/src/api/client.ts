@@ -1,7 +1,12 @@
 const BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/+$/, '')
 
+const API_PREFIX = '/api/v1'
+
 function apiUrl(path: string) {
-  return `${BASE}${path.startsWith('/') ? path : '/api/v1' + path}`
+  const normalized = path.startsWith('/') ? path : `/${path}`
+  // `/health` lives at the server root; every other endpoint is under /api/v1.
+  if (normalized === '/health') return `${BASE}${normalized}`
+  return `${BASE}${API_PREFIX}${normalized}`
 }
 
 export class ApiError extends Error {
@@ -13,7 +18,12 @@ export class ApiError extends Error {
   static fromResponse(body: unknown, status: number): ApiError {
     if (body && typeof body === 'object') {
       const obj = body as Record<string, unknown>
-      const message = typeof obj.message === 'string' ? obj.message : String(body)
+      const message =
+        typeof obj.message === 'string'
+          ? obj.message
+          : typeof obj.detail === 'string'
+            ? obj.detail
+            : `HTTP ${status}`
       const code = typeof obj.code === 'string' ? obj.code : null
       const details = obj.details ?? null
       return new ApiError(message, status, code, details)

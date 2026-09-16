@@ -1,16 +1,18 @@
 <template>
   <div class="sqlpage">
-    <div class="page-head">
-      <div class="head-left">
-        <button class="btn" @click="$router.back()">← 명세 확정</button>
-        <span class="head-title">02 SQL 팩</span>
-        <span class="mono">revision {{ pack?.revision ?? '·' }}</span>
-        <span class="mono">specVersion {{ pack?.specVersion ?? '·' }}</span>
-        <span class="mono">contentHash {{ pack?.contentHash?.slice(0, 12) ?? '·' }}…</span>
-        <span class="badge" :class="rollbackClass">{{ rollbackLabel }}</span>
+    <div class="sql-header">
+      <div class="sql-header-left">
+        <span class="sql-bread mono">홈</span>
+        <span class="sql-bread-sep">/</span>
+        <span class="sql-bread mono">01 명세 확정</span>
+        <span class="sql-bread-sep">/</span>
+        <span class="sql-bread mono">02 SQL 팩</span>
       </div>
-      <div class="head-right">
-        <button class="btn outline" @click="regenerate" :disabled="!specId">명세에서 다시 생성</button>
+      <div class="sql-meta">
+        <span class="sql-meta-item mono">revision {{ pack?.revision ?? '·' }}</span>
+        <span class="sql-meta-item mono">specVersion {{ pack?.specVersion ?? '·' }}</span>
+        <span class="sql-meta-item mono">contentHash {{ pack?.contentHash?.slice(0, 12) ?? '·' }}…</span>
+        <span class="badge" :class="rollbackClass">{{ rollbackLabel }}</span>
       </div>
     </div>
 
@@ -20,65 +22,60 @@
 
     <div v-else-if="!pack" class="empty-state-card card">
       <div class="empty-state">SQL 팩이 없습니다. 먼저 명세를 확정하세요.</div>
-      <button class="btn primary" @click="regenerate">SQL 팩 생성</button>
+      <button class="btn primary" @click="regenerate" :disabled="loading">SQL 팩 생성</button>
     </div>
 
     <div v-else>
-      <div class="progress">
-        <div class="progress-item" :class="{ active: artifactKey === 'precheckSql' }">
-          <span class="pnum">1</span><span>확인</span>
-        </div>
-        <div class="progress-sep"></div>
-        <div class="progress-item" :class="{ active: artifactKey === 'backupSql' }">
-          <span class="pnum">2</span><span>백업</span>
-        </div>
-        <div class="progress-sep"></div>
-        <div class="progress-item" :class="{ active: artifactKey === 'executionSql' }">
-          <span class="pnum">3</span><span>실행</span>
-        </div>
-        <div class="progress-sep"></div>
-        <div class="progress-item" :class="{ active: artifactKey === 'verificationSql' }">
-          <span class="pnum">4</span><span>검증</span>
-        </div>
-        <div class="progress-sep"></div>
-        <div class="progress-item" :class="{ active: artifactKey === 'rollbackSql' }">
-          <span class="pnum">5</span><span>롤백</span>
-        </div>
-        <div class="progress-right">
-          <span class="mono">SQL 확인 {{ artifactIndex + 1 }} / 5</span>
-          <button class="btn" @click="confirmArtifact" :disabled="saving">확인</button>
-        </div>
+      <div class="artifact-tabs">
+        <button
+          v-for="artifact in artifactList"
+          :key="artifact.key"
+          class="artifact-tab"
+          :class="{ active: artifactKey === artifact.key }"
+          @click="switchArtifact(artifact.key)"
+        >
+          <span class="artifact-status" :class="artifactStatusClass(artifact.key)"></span>
+          {{ artifact.title }}
+        </button>
+        <button class="btn primary" style="margin-left: auto;" @click="confirmCurrent" :disabled="saving">
+          확인
+        </button>
+      </div>
+      <div class="sql-meta-row">
+        <span class="mono">SQL 확인 {{ confirmedCount }} / 5</span>
       </div>
 
       <div class="sql-grid">
         <section class="card sql-card">
-          <div class="card-head">
-            <div class="card-title">
+          <div class="sql-card-head">
+            <div class="sql-card-title">
               <span class="artifact-badge mono">{{ currentArtifactLabel }}</span>
               <span class="artifact-name">{{ currentArtifactTitle }}</span>
             </div>
-            <div class="card-actions">
+            <div class="sql-card-actions">
               <button class="btn small" @click="saveArtifact" :disabled="saving || !editableSql">저장 (revision +1)</button>
-              <button class="btn small">되돌리기</button>
-              <button class="btn small">복사</button>
+              <button class="btn small" @click="revertArtifact" :disabled="saving">되돌리기</button>
+              <button class="btn small" @click="copyArtifact" :disabled="saving">복사</button>
             </div>
           </div>
 
-          <div class="code-block sql-editor">
+          <div class="sql-editor-wrap">
+            <div class="sql-editor-gutter">
+              <span v-for="(line, idx) in currentLines" :key="idx" class="sql-line-num">{{ idx + 1 }}</span>
+            </div>
             <textarea
               class="sql-textarea mono"
-              :value="currentSql"
+              :value="currentSqlText"
               @input="onSqlInput"
               :disabled="saving"
-              rows="14"
+              rows="16"
               spellcheck="false"
+              ref="sqlEditorRef"
             ></textarea>
           </div>
 
-          <div v-if="problemCount" class="problem-bar">
-            <span class="problem-count mono">문제</span>
-            <span class="badge danger">오류 {{ errors }} · 경고 {{ warnings }}</span>
-            <span class="problem-detail">PostgreSQL 등호 문법 오류 · 자리표시자 잔여</span>
+          <div class="sql-card-foot">
+            <button class="btn small" @click="regenerate" :disabled="loading">명세에서 다시 생성</button>
           </div>
         </section>
 
@@ -108,8 +105,8 @@
           </div>
 
           <div class="sql-actions">
-            <button class="btn primary" @click="runReview" :disabled="!canReview">정적 검토 실행</button>
-            <button class="btn outline" @click="regenerate" :disabled="!specId">명세에서 다시 생성</button>
+            <button class="btn primary" @click="runReview" :disabled="!specId">정적 검토 실행</button>
+            <button class="btn outline" @click="clearConfirmedAndRegenerate" :disabled="loading">명세에서 다시 생성</button>
           </div>
         </section>
       </div>
@@ -119,7 +116,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { createSqlPack, updateSqlArtifact, reviewSpec } from '@/api/client'
 import { useAppStore } from '@/stores/app'
 
@@ -133,11 +130,9 @@ type ArtifactKey = 'precheckSql' | 'backupSql' | 'executionSql' | 'verificationS
 
 const loading = ref(false)
 const saving = ref(false)
-const errors = ref(1)
-const warnings = ref(2)
+const sqlEditorRef = ref<HTMLTextAreaElement | null>(null)
 
 const pack = computed(() => store.sqlPack)
-
 const evidence = computed(() => store.evidence)
 
 const artifactKey = ref<ArtifactKey>('executionSql')
@@ -159,10 +154,10 @@ const currentArtifactTitle = computed(() => {
   const item = artifactList.find((a) => a.key === artifactKey.value)
   return item?.title ?? ''
 })
-const currentSql = computed(() => sqlText.value || artifactSql(artifactKey.value))
-const artifactIndex = computed(() => artifactList.findIndex((a) => a.key === artifactKey.value))
-const editableSql = computed(() => artifactKey.value !== 'precheckSql')
-const problemCount = computed(() => errors.value + warnings.value)
+const currentSqlText = computed(() => sqlText.value || artifactSql(artifactKey.value))
+const currentLines = computed(() => currentSqlText.value.split('\n'))
+const editableSql = computed(() => true)
+const confirmedCount = computed(() => store.confirmedArtifacts.size)
 const rollbackLabel = computed(() => {
   if (pack.value?.rollbackStatus === 'COMPLETE') return '롤백 완료'
   return '롤백 템플릿 (백업 행 필요)'
@@ -171,21 +166,6 @@ const rollbackClass = computed(() => {
   if (pack.value?.rollbackStatus === 'COMPLETE') return 'badge-ok'
   return 'badge-warning'
 })
-const canReview = computed(() => {
-  if (!pack.value) return false
-  const checked = [store.evidence.executionPlanReviewed, store.evidence.indexReviewed, store.evidence.lockReviewed, store.evidence.concurrencyReviewed]
-  return checked.every(Boolean)
-})
-
-watch(
-  () => pack.value,
-  () => {
-    if (pack.value) {
-      syncSqlText()
-    }
-  },
-  { immediate: true },
-)
 
 function artifactSql(key: ArtifactKey): string {
   const p = pack.value
@@ -197,40 +177,58 @@ function artifactSql(key: ArtifactKey): string {
   return p.rollbackSql
 }
 
-function syncSqlText() {
-  if (!pack.value) return
-  sqlText.value = artifactSql(artifactKey.value)
+function artifactStatusClass(key: ArtifactKey): string {
+  if (store.confirmedArtifacts.has(key)) return 'artifact-status-confirmed'
+  return 'artifact-status-none'
 }
+
+function switchArtifact(key: ArtifactKey) {
+  artifactKey.value = key
+  sqlText.value = ''
+}
+
+watch(
+  () => pack.value,
+  () => {
+    if (pack.value) {
+      sqlText.value = ''
+    }
+  },
+  { immediate: true },
+)
 
 function onSqlInput(event: Event) {
   const target = event.target as HTMLTextAreaElement
   sqlText.value = target.value
 }
 
+function syncSqlText() {
+  if (!pack.value) return
+  sqlText.value = artifactSql(artifactKey.value)
+}
+
 async function regenerate() {
   if (!specId.value) return
   loading.value = true
-  saving.value = true
   try {
     const data = await createSqlPack(specId.value)
     store.setSqlPackData(data)
     store.setBaselineSqlPack(data)
-    syncSqlText()
+    sqlText.value = ''
   } catch (err) {
     console.error(err)
   } finally {
     loading.value = false
-    saving.value = false
   }
 }
 
 async function saveArtifact() {
-  if (saving.value || !specId.value || !editableSql.value) return
+  if (saving.value || !specId.value) return
   saving.value = true
   try {
     const data = await updateSqlArtifact(specId.value, artifactKey.value, sqlText.value)
     store.setSqlPackData(data)
-    syncSqlText()
+    sqlText.value = ''
   } catch (err) {
     console.error(err)
   } finally {
@@ -238,12 +236,28 @@ async function saveArtifact() {
   }
 }
 
-async function confirmArtifact() {
-  await saveArtifact()
+function confirmCurrent() {
+  if (!specId.value) return
+  if (store.confirmedArtifacts.has(artifactKey.value)) return
+  store.markArtifactConfirmed(artifactKey.value)
+}
+
+function revertArtifact() {
+  sqlText.value = artifactSql(artifactKey.value)
+}
+
+async function copyArtifact() {
+  const sql = sqlText.value || artifactSql(artifactKey.value)
+  if (!sql) return
+  try {
+    await navigator.clipboard.writeText(sql)
+  } catch {
+    // clipboard unavailable
+  }
 }
 
 async function runReview() {
-  if (!specId.value || !canReview.value) return
+  if (!specId.value) return
   try {
     const data = await reviewSpec(specId.value, {
       executionPlanReviewed: store.evidence.executionPlanReviewed,
@@ -258,6 +272,11 @@ async function runReview() {
   }
 }
 
+async function clearConfirmedAndRegenerate() {
+  if (!specId.value) return
+  store.clearConfirmedArtifacts()
+  await regenerate()
+}
 </script>
 
 <style scoped>
@@ -265,7 +284,7 @@ async function runReview() {
   max-width: 1180px;
 }
 
-.page-head {
+.sql-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -274,16 +293,30 @@ async function runReview() {
   gap: 10px;
 }
 
-.head-left,
-.head-right {
+.sql-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
-.head-title {
-  font-size: 20px;
-  font-weight: 600;
+.sql-bread {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sql-bread-sep {
+  color: var(--text-faint);
+}
+
+.sql-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sql-meta-item {
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .loading-bar {
@@ -300,69 +333,76 @@ async function runReview() {
   font-size: 13px;
 }
 
-.progress {
+.artifact-tabs {
   display: flex;
   align-items: center;
   background: var(--panel);
   border: 1px solid var(--border-soft);
   border-radius: 10px;
-  padding: 10px 14px;
-  margin-bottom: 18px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
-.progress-item {
-  display: flex;
+.artifact-tab {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 18px;
+  background: var(--bg);
   color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
-.progress-item.active {
-  color: var(--accent-2);
+.artifact-tab:hover {
+  background: var(--border-soft);
+  color: var(--text);
+}
+
+.artifact-tab.active {
+  background: var(--accent-bg);
+  color: var(--accent);
   font-weight: 600;
 }
 
-.pnum {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
+.artifact-status {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--chip-bg);
-  border: 1px solid var(--chip-border);
-  font-size: 10px;
-}
-
-.progress-item.active .pnum {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.progress-sep {
-  width: 1px;
-  height: 14px;
   background: var(--border);
-  margin: 0 8px;
 }
 
-.progress-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.artifact-status-confirmed {
+  background: var(--ok-text);
+}
+
+.artifact-status-none {
+  background: var(--border);
+}
+
+.sql-meta-row {
+  margin-bottom: 12px;
+  color: var(--text-dim);
+  font-size: 12px;
 }
 
 .sql-grid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
+  grid-template-columns: 1.5fr 1fr;
   gap: 16px;
   align-items: start;
 }
 
-.card-head {
+.sql-card {
+  padding: 18px;
+}
+
+.sql-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -371,7 +411,7 @@ async function runReview() {
   gap: 8px;
 }
 
-.card-title {
+.sql-card-title {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -391,19 +431,41 @@ async function runReview() {
   font-weight: 600;
 }
 
-.card-actions {
+.sql-card-actions {
   display: flex;
   gap: 6px;
 }
 
-.sql-editor {
-  min-height: 220px;
+.sql-editor-wrap {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.sql-editor-gutter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 12px 8px 12px 12px;
+  background: var(--bg);
+  border-inline-end: 1px solid var(--border-soft);
+  min-width: 44px;
+  user-select: none;
+}
+
+.sql-line-num {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  line-height: 1.5;
 }
 
 .sql-textarea {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  flex: 1;
+  border: none;
+  border-radius: 0;
   padding: 12px;
   font-family: var(--mono);
   font-size: 13px;
@@ -418,22 +480,20 @@ async function runReview() {
   cursor: not-allowed;
 }
 
-.problem-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.sql-card-foot {
   margin-top: 12px;
-  font-size: 12px;
-  color: var(--text-dim);
-  flex-wrap: wrap;
+  display: flex;
+  justify-content: flex-end;
 }
 
-.problem-count {
-  color: var(--text-muted);
+.checklist-card {
+  padding: 18px;
 }
 
-.problem-detail {
-  color: var(--text-dim);
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
 }
 
 .checklist {

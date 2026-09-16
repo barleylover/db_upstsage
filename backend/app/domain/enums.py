@@ -3,6 +3,13 @@ from enum import Enum
 
 class DBMS(str, Enum):
     POSTGRESQL = "POSTGRESQL"
+    MYSQL = "MYSQL"
+    MARIADB = "MARIADB"
+    ORACLE = "ORACLE"
+    SQL_SERVER = "SQL_SERVER"
+    SQLITE = "SQLITE"
+    BIGQUERY = "BIGQUERY"
+    SNOWFLAKE = "SNOWFLAKE"
 
 
 class Operation(str, Enum):
