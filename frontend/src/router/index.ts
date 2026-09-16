@@ -8,11 +8,6 @@ const routes = [
     component: () => import('@/views/HomeView.vue'),
   },
   {
-    path: '/spec/new',
-    name: 'spec-new',
-    component: () => import('@/views/SpecNewView.vue'),
-  },
-  {
     path: '/spec/:specId/confirm',
     name: 'spec-confirm',
     component: () => import('@/views/SpecConfirmView.vue'),

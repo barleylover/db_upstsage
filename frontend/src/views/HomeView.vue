@@ -29,8 +29,7 @@
         <textarea
           class="composer-input textarea"
           placeholder="바꾸려는 내용을 여기에 적습니다 …"
-          :model-value="requestText"
-          @update:model-value="requestText = ($event as string)"
+          v-model="requestText"
           maxlength="10000"
           rows="4"
         ></textarea>
@@ -73,13 +72,25 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { interpretRequest } from '@/api/client'
 
 const router = useRouter()
 const requestText = ref('tenant_id가 42이고 status가 pending인 주문을 2026-09-01 이전에 created_at 기준으로 취소 변경해줘')
 
-function submitRequest() {
+async function submitRequest() {
   if (!requestText.value.trim()) return
-  router.push('/spec/new')
+  try {
+    const spec = await interpretRequest(requestText.value, {
+      database: 'app',
+      schema: 'public',
+      tables: [
+        { name: 'orders', columns: [{ name: 'id', data_type: 'bigint', nullable: false }, { name: 'tenant_id', data_type: 'bigint', nullable: false }, { name: 'status', data_type: 'varchar', nullable: false }, { name: 'created_at', data_type: 'timestamp', nullable: false }], primary_key_columns: ['id'] },
+      ],
+    })
+    router.push(`/spec/${spec.specId}/confirm`)
+  } catch (err) {
+    console.error(err)
+  }
 }
 </script>
 
