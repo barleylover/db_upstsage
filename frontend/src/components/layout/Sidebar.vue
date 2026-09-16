@@ -6,13 +6,13 @@
     </div>
 
     <nav class="sidebar-nav">
-      <button class="sidebar-section-btn" @click="$emit('newReview')">
+      <button class="sidebar-section-btn" @click="router.push('/home')">
         <span class="plus">+</span> 새 검토
       </button>
-      <button class="sidebar-section-btn" :class="{ active: activeRoute.startsWith('/setup/schemas') }" @click="$router.push('/setup/schemas')">
+      <button class="sidebar-section-btn" :class="{ active: activeRoute.startsWith('/setup/schemas') }" @click="router.push('/setup/schemas')">
         스키마
       </button>
-      <button class="sidebar-section-btn" :class="{ active: activeRoute.startsWith('/setup/templates') }" @click="$router.push('/setup/templates')">
+      <button class="sidebar-section-btn" :class="{ active: activeRoute.startsWith('/setup/templates') }" @click="router.push('/setup/templates')">
         양식
       </button>
     </nav>
@@ -25,50 +25,28 @@
       </div>
       <div class="sidebar-tools-divider"></div>
 
-      <div class="sidebar-section-label">북마크</div>
+      <div class="sidebar-section-label">최근 검토</div>
       <div class="sidebar-chat-list">
-        <div class="sidebar-chat-item">
-          <span class="sidebar-chat-dot"></span>
-          <div class="sidebar-chat-content">
-            <div class="sidebar-chat-title">폴더 +</div>
+        <div v-if="recentSpecs.length === 0" class="sidebar-empty">
+          <div class="sidebar-chat-item">
+            <span class="sidebar-chat-dot"></span>
+            <div class="sidebar-chat-content">
+              <div class="sidebar-chat-title">최근 검토 없음</div>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div class="sidebar-section-label">최근 대화 내역</div>
-      <div class="sidebar-chat-list">
-        <div class="sidebar-chat-item active" @click="onSelectChat">
+        <div v-else v-for="item in recentSpecs" :key="item.specId" class="sidebar-chat-item" :class="{ active: activeSpecId === item.specId }" @click="openRecent(item)">
           <span class="sidebar-chat-dot"></span>
           <div class="sidebar-chat-content">
-            <div class="sidebar-chat-title">tenant_id가 42이고 status가…</div>
-            <div class="sidebar-chat-meta">UPDATE · orders · REVIEW</div>
-          </div>
-        </div>
-        <div class="sidebar-date-group">
-          <div class="sidebar-date-label">오늘</div>
-        </div>
-        <div class="sidebar-chat-item" @click="onSelectChat">
-          <span class="sidebar-chat-dot"></span>
-          <div class="sidebar-chat-content">
-            <div class="sidebar-chat-title">status가 draft인 주문을 삭제…</div>
-            <div class="sidebar-chat-meta">DELETE · orders · DRAFT</div>
-          </div>
-        </div>
-        <div class="sidebar-date-group">
-          <div class="sidebar-date-label">어제</div>
-        </div>
-        <div class="sidebar-chat-item" @click="onSelectChat">
-          <span class="sidebar-chat-dot"></span>
-          <div class="sidebar-chat-content">
-            <div class="sidebar-chat-title">created_at이 비어 있는 주문…</div>
-            <div class="sidebar-chat-meta">UPDATE · orders · BLOCK</div>
+            <div class="sidebar-chat-title">{{ truncate(item.originalRequest) }}</div>
+            <div class="sidebar-chat-meta">{{ item.status }} · step {{ item.lastStep }}</div>
           </div>
         </div>
       </div>
     </div>
 
     <div class="sidebar-footer">
-      <button class="sidebar-footer-btn" :class="{ active: activeRoute === '/settings' }" @click="$router.push('/settings')">
+      <button class="sidebar-footer-btn" :class="{ active: activeRoute === '/settings' }" @click="router.push('/settings')">
         설정   ·   SQL 편집기 · 토크나이저
       </button>
     </div>
@@ -77,17 +55,32 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
+import { useAppStore } from '@/stores/app'
 
 const route = useRoute()
-const emit = defineEmits<{ newReview: [] }>()
+const router = useRouter()
+const store = useAppStore()
 
 const activeRoute = computed(() => route.path)
+const recentSpecs = computed(() => store.recentSpecs)
+const activeSpecId = computed(() => store.currentSpecId)
 
-function onSelectChat() {
-  // 최근 대화 항목 클릭 시 해당 spec의 마지막 단계로 이동
-  // 백엔드에 목록 API가 없어서 지금은 홈으로 돌아가기만 하되, 추후 Pinia/ローカステストデータ 연동
-  emit('newReview')
+function truncate(text: string): string {
+  if (!text) return ''
+  const max = 28
+  if (text.length <= max) return text
+  return text.slice(0, max) + '…'
+}
+
+function openRecent(item: { specId: string; lastStep: number }) {
+  if (!item.specId) return
+  const targetStep = item.lastStep ?? 1
+  if (targetStep === 1) {
+    router.push('/home')
+    return
+  }
+  router.push(`/spec/${item.specId}/confirm`)
 }
 </script>
 
@@ -194,14 +187,16 @@ function onSelectChat() {
   font-size: 11px;
   color: var(--text-faint);
   margin: 12px 4px 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .sidebar-chat-list {
   flex: 1;
   overflow: auto;
   margin: 0 4px;
+}
+
+.sidebar-empty {
+  padding: 0 4px;
 }
 
 .sidebar-chat-item {
@@ -227,7 +222,6 @@ function onSelectChat() {
   border-radius: 50%;
   background: var(--text-faint);
   flex-shrink: 0;
-  margin-top: 4px;
 }
 
 .sidebar-chat-content {
@@ -247,16 +241,6 @@ function onSelectChat() {
   font-size: 9.5px;
   color: var(--text-dim);
   margin-top: 2px;
-}
-
-.sidebar-date-group {
-  margin: 6px 4px;
-}
-
-.sidebar-date-label {
-  font-size: 11px;
-  color: var(--text-faint);
-  margin-bottom: 4px;
 }
 
 .sidebar-footer {

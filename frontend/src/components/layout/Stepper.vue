@@ -17,7 +17,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 
 const route = useRoute()
@@ -53,21 +53,12 @@ const currentStep = computed((): number => {
 const isActiveStep = (step: number): boolean => currentStep.value === step
 
 const canAct = (step: number): boolean => {
-  if (!specId.value) return false
-  if (step === 2) return true
-  if (specStatus.value !== 'CONFIRMED') return false
-  if (step === 3) return true
-  if (step === 4) {
-    const review = store.review
-    if (!review) return false
-    return review.verdict === 'REVIEW' || review.verdict === 'BLOCK'
-  }
-  if (step === 5) {
-    const review = store.review
-    if (!review) return false
-    return review.verdict === 'READY' || review.verdict === 'BLOCK'
-  }
-  if (step === 6) return true
+  if (step === 1) return true
+  if (step === 2) return !!specId.value
+  if (step === 3) return specStatus.value === 'CONFIRMED'
+  if (step === 4) return !!store.review
+  if (step === 5) return !!store.review
+  if (step === 6) return !!store.document
   return false
 }
 
@@ -91,6 +82,7 @@ const goStep = (step: number): void => {
   else if (step === 5) router.push(`/spec/${specId.value}/document`)
   else if (step === 6) router.push(`/spec/${specId.value}/export`)
 }
+
 </script>
 
 <style scoped>

@@ -1,38 +1,40 @@
 <template>
   <div class="review-page">
-    <div class="page-head">
-      <div class="head-left">
-        <button class="btn" @click="$router.back()">← SQL 팩</button>
-        <span class="head-title">03 검토</span>
-        <span class="mono">revision {{ review?.sqlPackRevision ?? '·' }} · v{{ review?.specVersion ?? '·' }}</span>
+    <div class="review-header">
+      <div class="review-header-left">
+        <span class="review-bread mono">홈</span>
+        <span class="review-bread-sep">/</span>
+        <span class="review-bread mono">01 명세 확정</span>
+        <span class="review-bread-sep">/</span>
+        <span class="review-bread mono">02 SQL 팩</span>
+        <span class="review-bread-sep">/</span>
+        <span class="review-bread mono">03 검토</span>
       </div>
-      <div class="head-right" v-if="review">
-        <span class="badge" :class="verdictBadgeClass">{{ review.verdict }}</span>
-        <span class="badge" :class="riskBadgeClass">RISK {{ review.riskLevel }}</span>
-        <span class="mono">{{ checkedCount }}/{{ totalCount }}</span>
+      <div class="review-meta" v-if="review">
+        <span class="review-meta-item mono">revision {{ review.sqlPackRevision }} · v{{ review.specVersion }}</span>
       </div>
     </div>
 
     <div v-if="!review" class="empty-state-card card">
       <div class="empty-state">검토 결과가 없습니다. 먼저 SQL 팩을 검토하세요.</div>
-      <button class="btn primary" @click="$router.back()">SQL 팩으로</button>
+      <button class="btn primary" @click="router.push('/spec/' + (store.currentSpecId ?? '') + '/sql-pack')">SQL 팩으로</button>
     </div>
 
     <div v-else>
-      <div class="summary-row">
-        <div class="summary-card" :class="failCardClass">
-          <span class="count mono">{{ failCount }}</span>
-          <span class="label">FAIL</span>
+      <div class="review-top">
+        <div class="review-verdict card">
+          <div class="review-verdict-head">
+            <span class="review-verdict-label">판정</span>
+            <span class="review-verdict-value" :class="verdictClass">{{ review.verdict }}</span>
+          </div>
+          <div class="review-verdict-chips">
+            <span class="chip" :class="riskClass">RISK {{ review.riskLevel }}</span>
+            <span class="chip" :class="failClass">FAIL {{ failCount }}</span>
+            <span class="chip" :class="reviewClass">REVIEW {{ reviewCount }}</span>
+            <span class="chip" :class="passClass">PASS {{ passCount }}</span>
+          </div>
         </div>
-        <div class="summary-card" :class="reviewCardClass">
-          <span class="count mono">{{ reviewCount }}</span>
-          <span class="label">REVIEW</span>
-        </div>
-        <div class="summary-card" :class="passCardClass">
-          <span class="count mono">{{ passCount }}</span>
-          <span class="label">PASS</span>
-        </div>
-        <div class="summary-note">
+        <div class="review-disclaimer">
           <span class="mono">{{ review.disclaimer }}</span>
         </div>
       </div>
@@ -50,59 +52,22 @@
             <tbody>
               <tr v-for="row in matrixRows" :key="row.label">
                 <th>{{ row.label }}</th>
-                <td v-for="col in matrixCols" :key="col" class="matrix-cell">
+                <td v-for="col in matrixCols" :key="col" class="matrix-cell" @click="selectMatrixCell(row.label, col)">
                   <span class="cell-status" :class="matrixCellClass(row.cells[col])">
-                    {{ cellIcon(matrixCellClass(row.cells[col])) }}
+                    {{ cellIcon(row.cells[col]) }}
                   </span>
                 </td>
               </tr>
             </tbody>
           </table>
-        </section>
-
-        <section class="card result-card">
-          <div class="section-title">판정 요약</div>
-          <div class="result-block">
-            <div class="result-item">
-              <span class="rlabel">판정</span>
-              <span class="rvalue badge" :class="verdictBadgeClass">{{ review.verdict }}</span>
+          <div v-if="selectedMatrix" class="matrix-detail">
+            <div class="matrix-detail-head">
+              <span class="matrix-detail-label">{{ selectedMatrix.row }} · {{ selectedMatrix.col }}</span>
+              <span class="cell-status" :class="matrixCellClass(selectedMatrix.status)">{{ cellIcon(selectedMatrix.status) }}</span>
             </div>
-            <div class="result-item">
-              <span class="rlabel">위험도</span>
-              <span class="rvalue badge" :class="riskBadgeClass">{{ review.riskLevel }}</span>
-            </div>
-            <div class="result-item">
-              <span class="rlabel">판독 시점</span>
-              <span class="rvalue mono">{{ formatDate(review.reviewedAt) }}</span>
-            </div>
-          </div>
-
-          <div class="fail-list">
-            <div v-for="check in failChecks" :key="check.ruleId" class="fail-card">
-              <div class="fail-head">
-                <span class="badge danger">{{ check.status }} · {{ check.category }}</span>
-                <span class="mono">{{ check.ruleId }}</span>
-              </div>
-              <div class="fail-msg">{{ check.message }}</div>
-              <div class="fail-detail">
-                <div><span class="detail-label">기대</span><span class="detail-value mono">{{ formatValue(check.expected) }}</span></div>
-                <div><span class="detail-label">실제</span><span class="detail-value mono">{{ formatValue(check.actual) }}</span></div>
-                <div class="detail-source mono">{{ check.sqlArtifact ?? '—' }} · {{ check.sqlLocation ?? '—' }}</div>
-              </div>
-              <div class="fail-fix">
-                <span class="fix-label">제안:</span>
-                <span class="fix-value">{{ check.suggestedFix ?? '—' }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="reviewChecks.length" class="checks-list">
-            <div v-for="check in reviewChecks" :key="check.ruleId" class="check-row-card">
-              <span class="check-badge" :class="check.status === 'FAIL' ? 'check-badge-danger' : check.status === 'REVIEW' ? 'check-badge-warning' : 'check-badge-ok'">
-                {{ check.status }}
-              </span>
-              <span class="check-rule mono">{{ check.ruleId }}</span>
-              <span class="check-msg">{{ check.message }}</span>
+            <div class="matrix-detail-body">
+              <div v-if="selectedMatrix.detail">{{ selectedMatrix.detail }}</div>
+              <div v-else class="matrix-detail-empty">해당 셀에는 별도 검사 결과가 없습니다.</div>
             </div>
           </div>
         </section>
@@ -112,7 +77,6 @@
           <div class="diff-summary">
             <span class="mono">{{ diffCountLabel }}</span>
           </div>
-
           <div class="diff-tabs">
             <button
               v-for="tab in diffTabs"
@@ -124,21 +88,35 @@
               {{ tab }}
             </button>
           </div>
-
           <div class="code-block diff-block">
             <pre class="diff-pre mono">{{ diffSql }}</pre>
           </div>
+        </section>
 
-          <div class="diff-rationale">
-            <div class="rationale-title">판정 근거</div>
-            <div class="rationale-list">
-              <div v-for="item in rationale" :key="item.rule" class="rationale-item">
-                <span class="badge" :class="item.badgeClass">{{ item.status }} {{ item.rule }}</span>
-                <span class="rationale-msg">{{ item.msg }}</span>
+        <section class="card rationale-card">
+          <div class="section-title">판정 근거</div>
+          <div class="rationale-list">
+            <div v-for="item in rationale" :key="item.ruleId" class="rationale-item">
+              <span class="rationale-status-bar" :class="rationaleStatusClass(item.status)"></span>
+              <span class="chip" :class="rationaleStatusClass(item.status)">{{ item.status }}</span>
+              <span class="mono">{{ item.ruleId }}</span>
+              <span class="rationale-title-text">{{ item.title }}</span>
+              <button v-if="item.hasDetail" class="rationale-expand" @click="item.expanded = !item.expanded">
+                {{ item.expanded ? '접기' : '펼치기' }}
+              </button>
+              <div v-if="item.expanded" class="rationale-detail">
+                <div><span class="detail-label">메시지</span><span class="detail-value">{{ item.message }}</span></div>
+                <div v-if="item.expected !== null && item.expected !== undefined"><span class="detail-label">기대</span><span class="detail-value mono">{{ formatValue(item.expected) }}</span></div>
+                <div v-if="item.actual !== null && item.actual !== undefined"><span class="detail-label">실제</span><span class="detail-value mono">{{ formatValue(item.actual) }}</span></div>
+                <div v-if="item.suggestedFix"><span class="detail-label">제안</span><span class="detail-value">{{ item.suggestedFix }}</span></div>
               </div>
             </div>
           </div>
         </section>
+      </div>
+
+      <div v-if="review.isStale" class="stale-banner">
+        <span class="mono">SQL 팩이 수정된 후 다시 검토했습니다. 이전 검토 결과는 무효입니다.</span>
       </div>
     </div>
   </div>
@@ -146,123 +124,272 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 
+const router = useRouter()
 const store = useAppStore()
 
 const review = computed(() => store.review)
 
-const verdictBadgeClass = computed(() => {
+const verdictClass = computed(() => {
   if (!review.value) return ''
-  if (review.value.verdict === 'BLOCK') return 'badge-danger'
-  if (review.value.verdict === 'REVIEW') return 'badge-warning'
-  if (review.value.verdict === 'READY') return 'badge-ok'
+  if (review.value.verdict === 'BLOCK') return 'verdict-block'
+  if (review.value.verdict === 'REVIEW') return 'verdict-review'
+  if (review.value.verdict === 'READY') return 'verdict-ready'
   return ''
 })
 
-const riskBadgeClass = computed(() => {
+const riskClass = computed(() => {
   if (!review.value) return ''
-  if (review.value.riskLevel === 'HIGH') return 'badge-danger'
-  if (review.value.riskLevel === 'MEDIUM') return 'badge-warning'
-  if (review.value.riskLevel === 'LOW') return 'badge-ok'
+  if (review.value.riskLevel === 'HIGH') return 'chip-danger'
+  if (review.value.riskLevel === 'MEDIUM') return 'chip-warning'
+  if (review.value.riskLevel === 'LOW') return 'chip-ok'
   return ''
 })
+
+const failClass = computed(() => (failCount.value > 0 ? 'chip-danger' : ''))
+const reviewClass = computed(() => (reviewCount.value > 0 ? 'chip-warning' : ''))
+const passClass = computed(() => (passCount.value > 0 ? 'chip-ok' : ''))
 
 const failChecks = computed(() => (review.value ? review.value.checks.filter((c) => c.status === 'FAIL') : []))
 const reviewChecks = computed(() => (review.value ? review.value.checks.filter((c) => c.status === 'REVIEW') : []))
 const passCount = computed(() => (review.value ? review.value.checks.filter((c) => c.status === 'PASS').length : 0))
 const failCount = computed(() => failChecks.value.length)
 const reviewCount = computed(() => reviewChecks.value.length)
-const totalCount = computed(() => (review.value ? review.value.checks.length : 0))
-const checkedCount = computed(() => passCount.value + failCount.value + reviewCount.value)
-
-const failCardClass = computed(() => (failCount.value > 0 ? 'summary-card-fail' : 'summary-card-empty'))
-const reviewCardClass = computed(() => (reviewCount.value > 0 ? 'summary-card-review' : 'summary-card-empty'))
-const passCardClass = computed(() => (passCount.value > 0 ? 'summary-card-pass' : 'summary-card-empty'))
 
 const matrixCols = ['대상', '키', '조건', '변경값', '검증', '복구', '버전'] as const
-const matrixRows: Array<{ label: string; cells: Record<string, string> }> = [
-  {
-    label: 'Change Spec',
-    cells: { 대상: 'pass', 키: 'pass', 조건: 'pass', 변경값: 'pass', 검증: 'info', 복구: 'info', 버전: 'pass' },
-  },
-  {
-    label: '확인',
-    cells: { 대상: 'pass', 키: 'pass', 조건: 'pass', 변경값: 'info', 검증: 'pass', 복구: 'info', 버전: 'pass' },
-  },
-  {
-    label: '백업',
-    cells: { 대상: 'pass', 키: 'info', 조건: 'pass', 변경값: 'info', 검증: 'pass', 복구: 'pass', 버전: 'pass' },
-  },
-  {
-    label: '실행',
-    cells: { 대상: 'pass', 키: 'info', 조건: 'fail', 변경값: 'pass', 검증: 'pass', 복구: 'info', 버전: 'pass' },
-  },
-  {
-    label: '검증',
-    cells: { 대상: 'info', 키: 'info', 조건: 'info', 변경값: 'pass', 검증: 'pass', 복구: 'info', 버전: 'pass' },
-  },
-  {
-    label: '롤백',
-    cells: { 대상: 'info', 키: 'info', 조건: 'info', 변경값: 'info', 검증: 'info', 복구: 'review', 버전: 'pass' },
-  },
-  {
+
+interface MatrixCell { status: string; detail: string }
+
+interface MatrixRow { label: string; cells: Record<string, MatrixCell> }
+
+const matrixRows = computed((): MatrixRow[] => {
+  if (!review.value) return []
+  const bySql = new Map<string, typeof review.value.checks>()
+  const byField = new Map<string, typeof review.value.checks>()
+  for (const c of review.value.checks) {
+    if (c.sqlArtifact) {
+      const key = c.sqlArtifact
+      if (!bySql.has(key)) bySql.set(key, [])
+      bySql.get(key)!.push(c)
+    }
+    if (c.specField) {
+      const key = c.specField
+      if (!byField.has(key)) byField.set(key, [])
+      byField.get(key)!.push(c)
+    }
+  }
+
+  const artifactOrder = ['precheckSql', 'backupSql', 'executionSql', 'verificationSql', 'rollbackSql']
+  const artifactLabel = {
+    precheckSql: '확인',
+    backupSql: '백업',
+    executionSql: '실행',
+    verificationSql: '검증',
+    rollbackSql: '롤백',
+  }
+
+  const rows: MatrixRow[] = []
+
+  let worst = '·'
+  for (const key of artifactOrder) {
+    const checks = bySql.get(key) ?? []
+    worst = worstStatus(checks)
+    rows.push({
+      label: artifactLabel[key] ?? key,
+      cells: {
+        대상: { status: '·', detail: '' },
+        키: { status: '·', detail: '' },
+        조건: { status: '·', detail: '' },
+        변경값: { status: '·', detail: '' },
+        검증: { status: '·', detail: '' },
+        복구: { status: '·', detail: '' },
+        버전: { status: '·', detail: '' },
+      },
+    })
+  }
+
+  const specFieldRows = [
+    { label: 'Change Spec', field: 'predicates' },
+    { label: 'Change Spec', field: 'mutations' },
+    { label: 'Change Spec', field: 'identityKeyColumns' },
+    { label: 'Change Spec', field: 'operation' },
+    { label: 'Change Spec', field: 'expectedRowCount' },
+  ]
+
+  const seen = new Set<string>()
+  for (const field of specFieldRows) {
+    const key = field.field
+    const checks = byField.get(key) ?? []
+    const worst = worstStatus(checks)
+    const detail = worst !== '·' ? bestCheckMessage(checks) : ''
+    const cellKey = field.label === 'Change Spec' && field.field === 'predicates' ? '조건'
+      : field.label === 'Change Spec' && field.field === 'mutations' ? '변경값'
+      : field.label === 'Change Spec' && field.field === 'identityKeyColumns' ? '키'
+      : field.label === 'Change Spec' && field.field === 'operation' ? '대상'
+      : field.label === 'Change Spec' && field.field === 'expectedRowCount' ? '검증'
+      : '대상'
+    if (!seen.has(`${field.label}:${cellKey}`)) {
+      rows.push({
+        label: 'Change Spec',
+        cells: { 대상: '조건' === cellKey ? { status: worst, detail } : { status: '·', detail: '' },
+                 키: '키' === cellKey ? { status: worst, detail } : { status: '·', detail: '' },
+                 조건: '조건' === cellKey ? { status: worst, detail } : { status: '·', detail: '' },
+                 변경값: '변경값' === cellKey ? { status: worst, detail } : { status: '·', detail: '' },
+                 검증: '검증' === cellKey ? { status: worst, detail } : { status: '·', detail: '' },
+                 복구: { status: '·', detail: '' },
+                 버전: { status: '·', detail: '' } },
+      })
+      seen.add(`${field.label}:${cellKey}`)
+    }
+  }
+
+  const documentRow = {
     label: '문서',
-    cells: { 대상: 'info', 키: 'info', 조건: 'info', 변경값: 'info', 검증: 'info', 복구: 'info', 버전: 'pass' },
-  },
-]
+    cells: { 대상: { status: '·', detail: '' }, 키: { status: '·', detail: '' }, 조건: { status: '·', detail: '' }, 변경값: { status: '·', detail: '' }, 검증: { status: '·', detail: '' }, 복구: { status: '·', detail: '' }, 버전: { status: '·', detail: '' } },
+  }
+  rows.push(documentRow)
+
+  return rows
+})
+
+function worstStatus(checks: { status: string }[]): string {
+  if (!checks.length) return '·'
+  if (checks.some((c) => c.status === 'FAIL')) return '✕'
+  if (checks.some((c) => c.status === 'REVIEW')) return '△'
+  if (checks.some((c) => c.status === 'PASS')) return '○'
+  return '·'
+}
+
+function bestCheckMessage(checks: { status: string; message: string }[]): string {
+  const target = checks.find((c) => c.status !== 'PASS')
+  if (!target) return ''
+  return target.message
+}
+
+function matrixCellClass(status: string): string {
+  if (status === '✕') return 'cell-fail'
+  if (status === '△') return 'cell-review'
+  if (status === '○') return 'cell-pass'
+  return 'cell-none'
+}
+
+function cellIcon(status: string): string {
+  if (status === '✕') return '✕'
+  if (status === '△') return '△'
+  if (status === '○') return '○'
+  return '·'
+}
+
+const selectedMatrix = ref<{ row: string; col: string; status: string; detail: string } | null>(null)
+
+function selectMatrixCell(row: string, col: string) {
+  const rowData = matrixRows.value.find((r) => r.label === row)
+  if (!rowData) return
+  const cell = rowData.cells[col]
+  if (!cell) return
+  selectedMatrix.value = { row, col, status: cell.status, detail: cell.detail }
+}
 
 const diffTabs = ['확인', '백업', '실행', '검증', '롤백'] as const
 const diffTab = ref<(typeof diffTabs)[number]>('실행')
 
-const diffSql = `UPDATE "public"."orders"\nSET "status" = 'cancelled'\nWHERE "created_at" < '2026-09-01'\n  AND __id__ IS NOT NULL;`
+const diffSql = computed(() => {
+  if (!store.sqlPack || !store.baselineSqlPack) return ''
+  const current = diffArtifactSql(store.sqlPack, diffTab.value)
+  const base = diffArtifactSql(store.baselineSqlPack, diffTab.value)
+  if (current === base) return ''
+  return unifiedDiff(base, current, diffTab.value)
+})
+
+function diffArtifactSql(pack: Awaited<ReturnType<typeof createSqlPack>> | undefined, tab: string): string {
+  if (!pack) return ''
+  if (tab === '확인') return pack.precheckSql
+  if (tab === '백업') return pack.backupSql
+  if (tab === '실행') return pack.executionSql
+  if (tab === '검증') return pack.verificationSql
+  return pack.rollbackSql
+}
+
+function unifiedDiff(base: string, current: string, label: string): string {
+  const baseLines = base.split('\n')
+  const currentLines = current.split('\n')
+  const maxLines = Math.max(baseLines.length, currentLines.length)
+  const lines: string[] = []
+  for (let i = 0; i < maxLines; i++) {
+    const b = baseLines[i] ?? ''
+    const c = currentLines[i] ?? ''
+    if (b !== c) {
+      if (b) lines.push(`-` + b)
+      if (c) lines.push(`+` + c)
+    } else if (b) {
+      lines.push(' ' + b)
+    }
+  }
+  if (lines.length === 0) return ''
+  return `@@ 기준 ${label} vs 현재 ${label} @@\n` + lines.join('\n')
+}
+
+const diffCountLabel = computed(() => {
+  if (!diffSql.value) return '기준 SQL과 동일'
+  const lines = diffSql.value.split('\n').filter((l) => l.startsWith('-') || l.startsWith('+'))
+  if (lines.length === 0) return '기준 SQL과 동일'
+  return `${lines.length}줄 다름`
+})
 
 const rationale = computed(() => {
   if (!review.value) return []
-  return review.value.checks.slice(0, 5).map((c) => ({
-    rule: c.ruleId,
-    status: c.status,
-    badgeClass: c.status === 'FAIL' ? 'badge-danger' : c.status === 'REVIEW' ? 'badge-warning' : 'badge-ok',
-    msg: c.status === 'FAIL' ? `확정 조건 누락: ${c.message}` : c.status === 'REVIEW' ? `검토 필요: ${c.message}` : `확인: ${c.message}`,
-  }))
+  const titleMap: Record<string, string> = {
+    B001: 'WHERE 존재',
+    B002: '대상 테이블',
+    B003: '확정 조건 누락',
+    B004: '조건 추가/변형',
+    B005: '변경값 불일치',
+    B006: '스키마 밖 식별자',
+    B007: '구문/범위',
+    B008: '롤백 키',
+    R001: '예상 건수',
+    R002: '롤백 템플릿',
+    R003: '실행 근거',
+    R004: '의미 동등성',
+    M001: '버전 불일치',
+  }
+  return review.value.checks
+    .slice()
+    .sort((a, b) => {
+      const order = { FAIL: 0, REVIEW: 1, PASS: 2 }
+      return order[a.status] - order[b.status]
+    })
+    .map((c) => ({
+      ruleId: c.ruleId,
+      status: c.status,
+      title: titleMap[c.ruleId] ?? c.ruleId,
+      message: c.message,
+      expected: c.expected,
+      actual: c.actual,
+      suggestedFix: c.suggestedFix,
+      hasDetail: true,
+      expanded: false,
+    }))
 })
 
-const diffCountLabel = computed(() => {
-  if (!review.value) return '—'
-  const total = review.value.checks.length
-  const fail = failCount.value
-  if (fail > 0) return `${fail}건 FAIL`
-  const localReviewCount = reviewCount.value
-  if (localReviewCount > 0) return `${localReviewCount}건 REVIEW`
-  return `${total}건 PASS`
-})
-
-function matrixCellClass(status: string): string {
-  if (status === 'fail') return 'cell-fail'
-  if (status === 'review') return 'cell-review'
-  if (status === 'info') return 'cell-info'
-  return 'cell-pass'
-}
-
-function cellIcon(status: string): string {
-  if (status === 'fail') return '✕'
-  if (status === 'review') return '!'
-  if (status === 'info') return '·'
-  return '✓'
+function rationaleStatusClass(status: string): string {
+  if (status === 'FAIL') return 'chip-danger'
+  if (status === 'REVIEW') return 'chip-warning'
+  return 'chip-ok'
 }
 
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return '—'
   if (typeof value === 'string') return value
-  return JSON.stringify(value)
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString()
-  } catch {
-    return iso
+  if (Array.isArray(value)) return value.map((v) => formatValue(v)).join(', ')
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .map(([k, v]) => `${k}: ${formatValue(v)}`)
+      .join(', ')
   }
+  return String(value)
 }
 </script>
 
@@ -271,7 +398,7 @@ function formatDate(iso: string): string {
   max-width: 1200px;
 }
 
-.page-head {
+.review-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -280,16 +407,30 @@ function formatDate(iso: string): string {
   gap: 10px;
 }
 
-.head-left,
-.head-right {
+.review-header-left {
   display: flex;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.review-bread {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.review-bread-sep {
+  color: var(--text-faint);
+}
+
+.review-meta {
+  display: flex;
   gap: 12px;
 }
 
-.head-title {
-  font-size: 20px;
-  font-weight: 600;
+.review-meta-item {
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .empty-state-card {
@@ -301,65 +442,80 @@ function formatDate(iso: string): string {
   font-size: 13px;
 }
 
-.summary-row {
+.review-top {
   display: flex;
+  align-items: stretch;
   gap: 12px;
   margin-bottom: 18px;
 }
 
-.summary-card {
+.review-verdict {
   flex: 1;
+  padding: 18px;
+}
+
+.review-verdict-head {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 16px;
-  border-radius: 10px;
-  min-width: 120px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
-.summary-card-fail {
-  background: #fbe7ea;
-  color: var(--danger);
+.review-verdict-label {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
-.summary-card-review {
-  background: #fbe6c8;
-  color: var(--warning);
-}
-
-.summary-card-pass {
-  background: #d9f0e0;
-  color: var(--ok);
-}
-
-.summary-card-empty {
-  background: var(--panel);
-  color: var(--text-dim);
-}
-
-.summary-card .count {
-  font-size: 32px;
+.review-verdict-value {
+  font-size: 28px;
   font-weight: 600;
+  padding: 2px 14px;
+  border-radius: 8px;
 }
 
-.summary-card .label {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+.verdict-block {
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
 
-.summary-note {
-  flex: 1;
+.verdict-review {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.verdict-ready {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.review-verdict-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.review-disclaimer {
   font-size: 12px;
   color: var(--text-dim);
+  padding: 18px;
+  border-inline-start: 1px solid var(--border-soft);
 }
 
 .review-grid {
   display: grid;
-  grid-template-columns: 1fr 1.4fr 1.4fr;
+  grid-template-columns: 1fr 1fr 1.2fr;
   gap: 16px;
   align-items: start;
+}
+
+.matrix-card {
+  padding: 18px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
 }
 
 .matrix {
@@ -368,157 +524,69 @@ function formatDate(iso: string): string {
 
 .matrix-cell {
   text-align: center;
+  cursor: default;
+  padding: 6px 4px;
 }
 
 .cell-status {
   font-size: 14px;
+  display: inline-block;
 }
 
 .cell-pass {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .cell-review {
-  color: var(--warning);
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  padding: 0 4px;
+  border-radius: 3px;
 }
 
 .cell-fail {
-  color: var(--danger);
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  padding: 0 4px;
+  border-radius: 3px;
 }
 
-.cell-info {
-  color: var(--text-dim);
-}
-
-.result-card {
-  padding: 16px;
-  background: var(--panel);
-}
-
-.result-block {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.result-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.result-item .rlabel {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.result-item .rvalue {
-  font-size: 14px;
-}
-
-.fail-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.fail-card {
-  background: #fbe7ea;
-  border: 1px solid #f0c8ce;
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
-.fail-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.fail-msg {
-  font-size: 13px;
-  margin-bottom: 8px;
-}
-
-.fail-detail {
-  font-size: 12px;
-  color: var(--text-muted);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 8px;
-}
-
-.detail-label {
+.cell-none {
   color: var(--text-faint);
 }
 
-.detail-value {
-  color: var(--text);
+.matrix-detail {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg);
 }
 
-.detail-source {
-  color: var(--text-dim);
-}
-
-.fail-fix {
-  font-size: 12px;
-  color: var(--text);
-  border-top: 1px solid #f0c0c5;
-  padding-top: 6px;
-}
-
-.checks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.check-row-card {
+.matrix-detail-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--border-soft);
+  justify-content: space-between;
+  margin-bottom: 6px;
 }
 
-.check-row-card:last-child {
-  border-bottom: none;
-}
-
-.check-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 999px;
-}
-
-.check-badge-danger {
-  background: #f6dada;
-  color: var(--danger);
-}
-
-.check-badge-warning {
-  background: #f3e6cc;
-  color: var(--warning);
-}
-
-.check-badge-ok {
-  background: #ddefE3;
-  color: var(--ok);
-}
-
-.check-rule {
+.matrix-detail-label {
+  font-size: 11px;
   color: var(--text-muted);
-  min-width: 60px;
+}
+
+.matrix-detail-body {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.matrix-detail-empty {
+  font-size: 12px;
+  color: var(--text-faint);
 }
 
 .diff-card {
-  padding: 16px;
-  background: var(--panel);
+  padding: 18px;
 }
 
 .diff-summary {
@@ -531,6 +599,7 @@ function formatDate(iso: string): string {
   gap: 4px;
   border-bottom: 1px solid var(--border-soft);
   margin-bottom: 10px;
+  flex-wrap: wrap;
 }
 
 .diff-tab {
@@ -544,7 +613,7 @@ function formatDate(iso: string): string {
 }
 
 .diff-tab.active {
-  color: var(--accent-2);
+  color: var(--accent);
   border-bottom-color: var(--accent);
 }
 
@@ -558,24 +627,19 @@ function formatDate(iso: string): string {
   border-radius: 8px;
   padding: 12px;
   min-height: 120px;
-  max-height: 220px;
+  max-height: 260px;
   overflow: auto;
+  white-space: pre;
 }
 
-.diff-rationale {
-  margin-top: 12px;
-}
-
-.rationale-title {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
+.rationale-card {
+  padding: 18px;
 }
 
 .rationale-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .rationale-item {
@@ -583,10 +647,72 @@ function formatDate(iso: string): string {
   align-items: center;
   gap: 8px;
   font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--panel);
 }
 
-.rationale-msg {
+.rationale-status-bar {
+  width: 4px;
+  height: 28px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.rationale-status-bar[class*="danger"] {
+  background: var(--danger-text);
+}
+
+.rationale-status-bar[class*="warning"] {
+  background: var(--warning-text);
+}
+
+.rationale-status-bar[class*="ok"] {
+  background: var(--ok-text);
+}
+
+.rationale-title-text {
+  flex: 1;
+  color: var(--text);
+}
+
+.rationale-expand {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.rationale-detail {
+  width: 100%;
+  font-size: 11.5px;
   color: var(--text-muted);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-label {
+  color: var(--text-faint);
+  margin-right: 6px;
+}
+
+.detail-value {
+  color: var(--text);
+}
+
+.stale-banner {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-radius: 8px;
+  font-size: 12.5px;
 }
 
 .card {

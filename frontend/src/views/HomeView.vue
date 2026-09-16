@@ -18,45 +18,54 @@
 
         <div class="composer-chips">
           <div class="composer-chip-row">
-            <button class="composer-chip" :class="{ active: schemaChipActive }" @click="toggleSchemaChip">
+            <button class="composer-chip" :class="{ active: schemaPopoverOpen }" @click="toggleSchemaPopover">
               <span class="composer-chip-label mono">{{ schemaChipLabel }}</span>
-              <span class="composer-chip-arrow">▾</span>
             </button>
-            <div v-if="schemaPopoverOpen" class="composer-popover">
-              <div class="composer-popover-row selected">● PostgreSQL</div>
-              <div class="composer-popover-row">  MySQL — 예정</div>
-              <div class="composer-popover-row">  MariaDB — 예정</div>
-              <div class="composer-popover-row">  Oracle — 예정</div>
-              <div class="composer-popover-row">  SQL Server — 예정</div>
+            <div v-if="schemaPopoverOpen" class="composer-popover" @click.stop>
+              <div class="composer-popover-head">스키마</div>
+              <div
+                v-for="schema in schemaList"
+                :key="schema.id"
+                class="composer-popover-row"
+                :class="{ selected: activeSchema?.id === schema.id }"
+                @click="selectSchema(schema)"
+              >
+                <span>●</span>
+                <span class="mono">{{ schema.name }}</span>
+                <span class="mono popover-meta">{{ schema.database }}.{{ schema.schema }}</span>
+              </div>
+              <div class="composer-popover-divider"></div>
+              <div class="composer-popover-row" @click="selectSchemaAutoDetect">
+                <span>●</span>
+                <span>자동 감지</span>
+              </div>
             </div>
           </div>
 
           <div class="composer-chip-row">
-            <button class="composer-chip" :class="{ active: dbmsChipActive }" @click="toggleDbmesChip">
+            <button class="composer-chip" :class="{ active: dbmsPopoverOpen }" @click="toggleDbmesPopover">
               <span class="composer-chip-label mono">{{ dbmsChipLabel }}</span>
-              <span class="composer-chip-arrow">▾</span>
             </button>
-            <div v-if="dbmesPopoverOpen" class="composer-popover">
-              <div class="composer-popover-row selected">● PostgreSQL</div>
-              <div class="composer-popover-row muted">  MySQL — 예정</div>
-              <div class="composer-popover-row muted">  MariaDB — 예정</div>
-              <div class="composer-popover-row muted">  Oracle — 예정</div>
-              <div class="composer-popover-row muted">  SQL Server — 예정</div>
+            <div v-if="dbmesPopoverOpen" class="composer-popover" @click.stop>
+              <div class="composer-popover-head">DBMS</div>
+              <div
+                v-for="dbms in supportedDbmses"
+                :key="dbms"
+                class="composer-popover-row"
+                :class="{ selected: activeSchema?.dbms === dbms }"
+                @click="selectDbms(dbms)"
+              >
+                <span>●</span>
+                <span>{{ dbmsLabel(dbms) }}</span>
+              </div>
             </div>
-          </div>
-
-          <div class="composer-chip-row">
-            <button class="composer-chip" :class="{ active: detectChipActive }" @click="toggleDetectChip">
-              <span class="composer-chip-label mono">자동 감지</span>
-              <span class="composer-chip-arrow">▾</span>
-            </button>
           </div>
         </div>
 
         <div class="composer-footer">
           <span class="char-count mono">{{ requestText.length }} / 10000</span>
-          <button class="composer-submit btn primary tall" :disabled="!requestText.trim() || submitting" @click="submitRequest">
-            전송 <span aria-hidden="true">↑</span>
+          <button class="composer-submit composer-submit-icon" :disabled="!requestText.trim() || submitting" @click="submitRequest" aria-label="요청 전송">
+            <span class="composer-submit-icon-mark">→</span>
           </button>
         </div>
 
@@ -80,6 +89,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { interpretRequest } from '@/api/client'
+import type { SchemaCatalogEntry } from '@/types'
 
 const router = useRouter()
 const store = useAppStore()
@@ -92,30 +102,69 @@ const cancelled = computed(() => store.notFound)
 const schemaPopoverOpen = ref(false)
 const dbmesPopoverOpen = ref(false)
 
+const schemaList = computed(() => store.schemaList)
 const activeSchema = computed(() => store.activeSchema)
-const schemaChipActive = ref(false)
+const supportedDbmses = computed(() => store.supportedDbmses)
+
 const schemaChipLabel = computed(() => {
   const s = activeSchema.value
-  return `${s?.name ?? '기본 스키마'} · ${s?.database ?? 'app'}.${s?.schema ?? 'public'} ▾`
+  if (!s) return '기본 스키마 · app.public'
+  return `${s.name} · ${s.database}.${s.schema}`
 })
 
-const dbmsChipActive = ref(false)
-const dbmsChipLabel = ref('PostgreSQL ▾')
+const dbmsChipLabel = computed(() => {
+  const s = activeSchema.value
+  if (!s) return 'PostgreSQL'
+  return dbmsLabel(s.dbms)
+})
 
-const detectChipActive = ref(true)
+function dbmsLabel(dbms: string): string {
+  const map: Record<string, string> = {
+    POSTGRESQL: 'PostgreSQL',
+    MYSQL: 'MySQL',
+    MARIADB: 'MariaDB',
+    ORACLE: 'Oracle',
+    SQL_SERVER: 'SQL Server',
+    SQLITE: 'SQLite',
+    BIGQUERY: 'BigQuery',
+    SNOWFLAKE: 'Snowflake',
+  }
+  return map[dbms] ?? dbms
+}
 
-function toggleSchemaChip() {
+function toggleSchemaPopover() {
   schemaPopoverOpen.value = !schemaPopoverOpen.value
   dbmesPopoverOpen.value = false
 }
 
-function toggleDbmesChip() {
+function toggleDbmesPopover() {
   dbmesPopoverOpen.value = !dbmesPopoverOpen.value
   schemaPopoverOpen.value = false
 }
 
-function toggleDetectChip() {
-  detectChipActive.value = !detectChipActive.value
+function selectSchema(schema: SchemaCatalogEntry) {
+  store.activeSchemaId = schema.id
+  schemaPopoverOpen.value = false
+}
+
+function selectSchemaAutoDetect() {
+  schemaPopoverOpen.value = false
+}
+
+function selectDbms(dbms: string) {
+  const current = activeSchema.value
+  if (!current) {
+    store.activeSchemaId = store.schemaList[0]?.id ?? null
+    const next = store.activeSchema
+    if (next) {
+      next.dbms = dbms as typeof next.dbms
+      store.persistSchemaCatalog()
+    }
+  } else {
+    current.dbms = dbms as typeof current.dbms
+    store.persistSchemaCatalog()
+  }
+  dbmesPopoverOpen.value = false
 }
 
 async function submitRequest() {
@@ -126,7 +175,7 @@ async function submitRequest() {
     const spec = await interpretRequest(requestText.value, {
       database: activeSchema.value?.database ?? 'app',
       schema: activeSchema.value?.schema ?? 'public',
-      tables: [
+      tables: activeSchema.value?.tables ?? [
         {
           name: 'orders',
           columns: [
@@ -245,17 +294,12 @@ function cancelDone() {
   color: var(--text);
 }
 
-.composer-chip-arrow {
-  color: var(--text-faint);
-  font-size: 10px;
-}
-
 .composer-popover {
   position: absolute;
   top: 100%;
   left: 0;
   z-index: 20;
-  min-width: 170px;
+  min-width: 220px;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -264,13 +308,27 @@ function cancelDone() {
   margin-top: 4px;
 }
 
+.composer-popover-head {
+  font-size: 10px;
+  color: var(--text-faint);
+  padding: 4px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .composer-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 5px 10px;
   border-radius: 6px;
-  font-family: var(--mono);
   font-size: 11.5px;
   color: var(--text-muted);
-  cursor: default;
+  cursor: pointer;
+}
+
+.composer-popover-row:hover {
+  background: var(--bg);
 }
 
 .composer-popover-row.selected {
@@ -278,8 +336,20 @@ function cancelDone() {
   color: var(--accent);
 }
 
-.composer-popover-row.muted {
+.composer-popover-row .mono {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.popover-meta {
   color: var(--text-faint);
+  margin-left: auto;
+}
+
+.composer-popover-divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 4px 10px;
 }
 
 .composer-footer {
@@ -294,8 +364,29 @@ function cancelDone() {
   color: var(--text-dim);
 }
 
-.composer-submit {
-  min-width: 78px;
+.composer-submit-icon {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  font-size: 16px;
+  min-width: 0;
+  flex: none;
+}
+
+.composer-submit-icon:hover {
+  background: var(--accent-3);
+  border-color: var(--accent-3);
+}
+
+.composer-submit-icon-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .composer-error {
