@@ -262,7 +262,7 @@
           v-else
           class="btn primary"
           @click="confirm"
-          :disabled="!editable || draft.unresolvedQuestionsText.trim()"
+          :disabled="!editable || !!draft.unresolvedQuestionsText.trim()"
         >
           {{ confirmLabel }}
         </button>
