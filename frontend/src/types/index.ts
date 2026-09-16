@@ -72,3 +72,50 @@ export interface DocumentTemplateItem {
   source: string
   value?: string
 }
+
+export interface ChangeSpec {
+  specId: string
+  version: number
+  status: SpecStatus
+  contentHash: string
+  originalRequest: string
+  database: string
+  schema: string
+  targetTable: string
+  identityKeyColumns: string[]
+  operation: Operation
+  predicates: Array<{ column: string; operator: string; value: unknown; valueType: ValueType }>
+  mutations: Array<{ column: string; value: unknown; valueType: ValueType }>
+  expectedRowCount: number | null
+  assumptions: string[]
+  unresolvedQuestions: string[]
+  createdAt: string
+  confirmedAt: string | null
+}
+
+export interface ReviewResult {
+  specId: string
+  specVersion: number
+  contentHash: string
+  sqlPackRevision: number
+  verdict: Verdict
+  riskLevel: RiskLevel
+  isStale: boolean
+  checks: ReviewCheck[]
+  disclaimer: string
+  reviewedAt: string
+}
+
+export interface ReviewCheck {
+  ruleId: string
+  category: string
+  status: CheckStatus
+  severity: Severity
+  message: string
+  expected: unknown
+  actual: unknown
+  specField: string | null
+  sqlArtifact: string | null
+  sqlLocation: string | null
+  suggestedFix: string | null
+}
