@@ -72,3 +72,9 @@ export interface DocumentTemplateItem {
   source: string
   value?: string
 }
+
+export interface CatalogTable {
+  name: string
+  columns: ColumnSchema[]
+  primary_key_columns: string[]
+}

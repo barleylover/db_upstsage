@@ -1,68 +1,95 @@
 <template>
   <header class="topbar">
-    <nav class="stepper">
-      <template v-for="(step, idx) in steps" :key="step.label">
-        <router-link
-          :to="resolveStepTo(step)"
-          class="step"
-          :class="{ active: isActive(step), done: isDone(step) }"
-        >
-          <span class="step-num">{{ step.num }}</span>
-          <span class="step-label">{{ step.label }}</span>
-        </router-link>
-        <span v-if="idx < steps.length - 1" class="step-sep"></span>
-      </template>
+    <nav class="topbar-tabs">
+      <button class="topbar-tab" :class="{ active: isActiveHome }" @click="go('/home')">홈</button>
+      <button class="topbar-tab" :class="{ active: isActiveStep(2) }" :disabled="!canAct(2)" @click="goStep(2)">01 명세 확정</button>
+      <button class="topbar-tab" :class="{ active: isActiveStep(3) }" :disabled="!canAct(3)" @click="goStep(3)">02 SQL 팩</button>
+      <button class="topbar-tab" :class="{ active: isActiveStep(4) }" :disabled="!canAct(4)" @click="goStep(4)">03 검토</button>
+      <button class="topbar-tab" :class="{ active: isActiveStep(5) }" :disabled="!canAct(5)" @click="goStep(5)">04 변경 문서</button>
+      <button class="topbar-tab" :class="{ active: isActiveStep(6) }" :disabled="!canAct(6)" @click="goStep(6)">05 내보내기</button>
     </nav>
     <div class="topbar-right">
-      <span class="pill confirmed mono" v-if="specStatus === 'CONFIRMED'">CONFIRMED v{{ specVersion }}</span>
-      <span class="pill demo mono">DEMO</span>
+      <span class="pill" :class="versionPillClass" v-if="specId">CONFIRMED v{{ specVersion }}</span>
+      <span class="pill pill-teal">DEMO</span>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 
 const route = useRoute()
+const router = useRouter()
 const store = useAppStore()
 
-const steps = [
-  { num: '01', label: '명세 확정', to: '/home' },
-  { num: '02', label: 'SQL 팩', to: (specId: string) => `/spec/${specId}/sql-pack` },
-  { num: '03', label: '검토', to: (specId: string) => `/spec/${specId}/review` },
-  { num: '04', label: '변경 문서', to: (specId: string) => `/spec/${specId}/document` },
-  { num: '05', label: '내보내기', to: (specId: string) => `/spec/${specId}/export` },
-]
-
+const specId = computed(() => store.currentSpecId)
 const specStatus = computed(() => store.currentSpecStatus ?? 'DRAFT')
 const specVersion = computed(() => {
-  const id = store.currentSpecId
-  if (!id) return 1
-  return 1
+  if (!specId.value) return 1
+  const spec = store.spec
+  return spec?.version ?? 1
 })
 
-const currentSpecId = computed(() => store.currentSpecId ?? null)
+const isActiveHome = computed(() => route.path === '/home')
 
-function resolveStepTo(step: { to: string | ((specId: string) => string) }) {
-  if (typeof step.to === 'function') {
-    return currentSpecId.value ? step.to(currentSpecId.value) : '/home'
+const currentStep = computed((): number => {
+  const path = route.path
+  if (path.startsWith('/spec/')) {
+    const parts = path.split('/')
+    const afterSpec = parts[2]
+    if (!afterSpec) return 0
+    if (afterSpec === 'confirm') return 2
+    if (afterSpec === 'sql-pack') return 3
+    if (afterSpec === 'review') return 4
+    if (afterSpec === 'document') return 5
+    if (afterSpec === 'export') return 6
+    return 0
   }
-  return step.to
-}
+  return 0
+})
 
-function isActive(step: { to: string | ((specId: string) => string) }) {
-  const target = resolveStepTo(step)
-  if (!target) return false
-  if (typeof target === 'string') {
-    return route.path === target || (target.endsWith('/') ? route.path.startsWith(target) : route.path.startsWith(target + '/'))
+const isActiveStep = (step: number): boolean => currentStep.value === step
+
+const canAct = (step: number): boolean => {
+  if (!specId.value) return false
+  if (step === 2) return true
+  if (specStatus.value !== 'CONFIRMED') return false
+  if (step === 3) return true
+  if (step === 4) {
+    const review = store.review
+    if (!review) return false
+    return review.verdict === 'REVIEW' || review.verdict === 'BLOCK'
   }
+  if (step === 5) {
+    const review = store.review
+    if (!review) return false
+    return review.verdict === 'READY' || review.verdict === 'BLOCK'
+  }
+  if (step === 6) return true
   return false
 }
 
-function isDone(_step: { to: string | ((specId: string) => string) }) {
-  return false
+const versionPillClass = computed((): string => {
+  if (specStatus.value === 'CONFIRMED') return 'pill-ok'
+  return ''
+})
+
+const go = (path: string): void => {
+  router.push(path)
+}
+
+const goStep = (step: number): void => {
+  if (!specId.value) {
+    router.push('/home')
+    return
+  }
+  if (step === 2) router.push(`/spec/${specId.value}/confirm`)
+  else if (step === 3) router.push(`/spec/${specId.value}/sql-pack`)
+  else if (step === 4) router.push(`/spec/${specId.value}/review`)
+  else if (step === 5) router.push(`/spec/${specId.value}/document`)
+  else if (step === 6) router.push(`/spec/${specId.value}/export`)
 }
 </script>
 
@@ -71,7 +98,8 @@ function isDone(_step: { to: string | ((specId: string) => string) }) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 32px;
+  height: 52px;
+  padding: 0 28px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   position: sticky;
@@ -79,67 +107,42 @@ function isDone(_step: { to: string | ((specId: string) => string) }) {
   z-index: 5;
 }
 
+.topbar-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.topbar-tab {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.topbar-tab:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.02);
+  color: var(--text);
+}
+
+.topbar-tab.active {
+  background: #ffffff;
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.topbar-tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .topbar-right {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.stepper {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.step {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  text-decoration: none;
-  color: var(--text-muted);
-  font-size: 11.5px;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-
-.step:hover {
-  background: rgba(0, 0, 0, 0.03);
-  color: var(--text);
-}
-
-.step.active {
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--text);
-}
-
-.step-num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--chip-bg);
-  border: 1px solid var(--chip-border);
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-.step.active .step-num {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.step-label {
-  white-space: nowrap;
-}
-
-.step-sep {
-  width: 1px;
-  height: 14px;
-  background: var(--border);
-  margin: 0 2px;
 }
 </style>
