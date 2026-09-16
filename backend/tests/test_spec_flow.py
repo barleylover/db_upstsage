@@ -64,3 +64,33 @@ def test_not_found_and_validation_errors_use_common_shape(env):
     assert set(missing.json()) == {"code", "message", "details", "requestId"}
     assert invalid.status_code == 422
     assert set(invalid.json()) == {"code", "message", "details", "requestId"}
+
+
+def test_value_types_are_corrected_by_schema_input(env, golden_request):
+    fake_solar = FakeSolarClient(
+        ChangeSpecDraft(
+            targetTable="orders",
+            identityKeyColumns=["id"],
+            operation=Operation.UPDATE,
+            predicates=[
+                Predicate(column="tenant_id", operator=Operator.EQ, value=42, valueType=ValueType.STRING),
+                Predicate(column="status", operator=Operator.EQ, value="pending", valueType=ValueType.STRING),
+                Predicate(column="created_at", operator=Operator.LT, value="2026-09-01T00:00:00+09:00", valueType=ValueType.STRING),
+            ],
+            mutations=[Mutation(column="status", value="cancelled", valueType=ValueType.STRING)],
+            unresolvedQuestions=[],
+        )
+    )
+    env.client.app.state.solar_client = fake_solar
+
+    interpreted = env.client.post("/api/v1/change-specs/interpret", json=golden_request)
+    assert interpreted.status_code == 201
+    draft = interpreted.json()
+
+    predicates_by_column = {p["column"]: p for p in draft["predicates"]}
+    assert predicates_by_column["tenant_id"]["valueType"] == "NUMBER"
+    assert predicates_by_column["status"]["valueType"] == "STRING"
+    assert predicates_by_column["created_at"]["valueType"] == "TIMESTAMP"
+
+    mutations_by_column = {m["column"]: m for m in draft["mutations"]}
+    assert mutations_by_column["status"]["valueType"] == "STRING"

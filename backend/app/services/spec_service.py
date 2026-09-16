@@ -7,7 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.core.errors import ConflictError, DomainValidationError
-from app.domain.enums import DBMS, SpecStatus
+from app.domain.enums import DBMS, SpecStatus, ValueType
 from app.domain.models import (
     ChangeSpec,
     ChangeSpecDraft,
@@ -23,6 +23,53 @@ def _normalized_value(value: Any) -> Any:
     if isinstance(value, str):
         return value.strip()
     return value
+
+
+
+def _infer_value_type_from_column_data_type(column_data_type: str) -> ValueType:
+    normalized = column_data_type.strip().lower()
+    base = normalized.split("(", 1)[0].strip()
+    if base in {"boolean", "bool"}:
+        return ValueType.BOOLEAN
+    if base.startswith("int") or base in {"smallint", "integer", "bigint", "serial", "bigserial", "real", "double precision", "float", "float4", "float8", "decimal", "numeric"}:
+        return ValueType.NUMBER
+    if base.startswith("date") or base.startswith("time") or base.startswith("timestamp"):
+        return ValueType.TIMESTAMP
+    if base.startswith("varchar") or base.startswith("char") or base.startswith("text") or base.startswith("bpchar"):
+        return ValueType.STRING
+    return ValueType.STRING
+
+
+def _correct_value_types_with_schema(draft: ChangeSpecDraft, schema_input: SchemaInput) -> ChangeSpecDraft:
+    table = next(
+        (t for t in schema_input.tables if t.name.lower() == draft.target_table.lower()),
+        None,
+    )
+    if table is None:
+        return draft
+    column_map = {column.name.lower(): column for column in table.columns}
+
+    corrected_predicates = []
+    for predicate in draft.predicates:
+        column = column_map.get(predicate.column.lower())
+        value_type = ValueType.STRING
+        if column is not None:
+            value_type = _infer_value_type_from_column_data_type(column.data_type)
+        corrected_predicates.append(
+            predicate.model_copy(update={"value_type": value_type})
+        )
+
+    corrected_mutations = []
+    for mutation in draft.mutations:
+        column = column_map.get(mutation.column.lower())
+        value_type = ValueType.STRING
+        if column is not None:
+            value_type = _infer_value_type_from_column_data_type(column.data_type)
+        corrected_mutations.append(
+            mutation.model_copy(update={"value_type": value_type})
+        )
+
+    return draft.model_copy(update={"predicates": corrected_predicates, "mutations": corrected_mutations})
 
 
 def compute_content_hash(draft: ChangeSpecDraft) -> str:
@@ -100,6 +147,7 @@ class SpecService:
                 "schema": draft.schema or request.schema_input.schema,
             }
         )
+        draft = _correct_value_types_with_schema(draft, request.schema_input)
         validate_draft_against_schema(draft, request.schema_input)
         spec = ChangeSpec(
             **draft.model_dump(),
@@ -135,7 +183,9 @@ class SpecService:
         candidate_data.pop("created_at", None)
         candidate_data.pop("confirmed_at", None)
         draft = ChangeSpecDraft.model_validate(candidate_data)
-        validate_draft_against_schema(draft, self._repository.get_schema(spec_id))
+        schema_input = self._repository.get_schema(spec_id)
+        draft = _correct_value_types_with_schema(draft, schema_input)
+        validate_draft_against_schema(draft, schema_input)
         if draft.unresolved_questions:
             raise ConflictError(
                 "UNRESOLVED_QUESTIONS",
