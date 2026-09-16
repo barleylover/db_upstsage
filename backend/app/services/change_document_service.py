@@ -13,6 +13,7 @@ from app.domain.models import (
     ChangeDocument,
     ChangeDocumentField,
     ChangeSpec,
+    DocumentTemplateField,
     GenerateChangeDocumentRequest,
     SqlPack,
 )

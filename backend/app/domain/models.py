@@ -220,6 +220,45 @@ class HealthResponse(APIModel):
     version: str
 
 
+class SubmittedDocumentField(APIModel):
+    key: DocumentFieldKey
+    value: Any | None = None
+
+
+class ReviewChangeDocumentRequest(APIModel):
+    fields: list[SubmittedDocumentField] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_keys(self) -> "ReviewChangeDocumentRequest":
+        seen: list[DocumentFieldKey] = []
+        for field in self.fields:
+            if field.key in seen:
+                raise ValueError(f"duplicate field key: {field.key.value}")
+            seen.append(field.key)
+        return self
+
+
+class DocumentReviewCheck(APIModel):
+    rule_id: str
+    status: CheckStatus
+    severity: Severity
+    field_key: DocumentFieldKey | None = None
+    message: str
+    expected: Any | None = None
+    actual: Any | None = None
+    suggested_fix: str | None = None
+
+
+class DocumentReviewResult(APIModel):
+    spec_id: str
+    spec_version: int = Field(ge=1)
+    content_hash: str
+    sql_pack_revision: int = Field(ge=1)
+    verdict: Verdict
+    checks: list[DocumentReviewCheck]
+    reviewed_at: datetime
+
+
 class DocumentTemplateField(APIModel):
     key: DocumentFieldKey
     label: str = Field(min_length=1)
