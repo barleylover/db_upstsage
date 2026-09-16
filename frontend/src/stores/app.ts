@@ -1,23 +1,24 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { SchemaCatalogEntry, DBMS, ChangeSpec, ReviewResult } from '@/types'
+import type { SchemaCatalogEntry, DBMS } from '@/types'
+import type { ChangeSpec, ReviewResult, SqlPack, ChangeDocument } from '@/api/client'
 
 export const useAppStore = defineStore('app', () => {
   const currentSpecId = ref<string | null>(null)
   const currentSpecStatus = ref<string | null>(null)
 
   const spec = ref<ChangeSpec | null>(null)
-  const sqlPack = ref<null>(null)
-  const baselineSqlPack = ref<null>(null)
+  const sqlPack = ref<SqlPack | null>(null)
+  const baselineSqlPack = ref<SqlPack | null>(null)
   const confirmedArtifacts = ref<Set<string>>(new Set())
   const evidence = ref({
-    execution_plan_reviewed: false,
-    index_reviewed: false,
-    lock_reviewed: false,
-    concurrency_reviewed: false,
+    executionPlanReviewed: false,
+    indexReviewed: false,
+    lockReviewed: false,
+    concurrencyReviewed: false,
   })
   const review = ref<ReviewResult | null>(null)
-  const document = ref<null>(null)
+  const document = ref<ChangeDocument | null>(null)
   const notFound = ref(false)
 
   const schemaList = ref<SchemaCatalogEntry[]>([
@@ -75,6 +76,38 @@ export const useAppStore = defineStore('app', () => {
     notFound.value = true
   }
 
+  function setSpecData(data: ChangeSpec) {
+    spec.value = data
+    setSpec(data.specId, data.status)
+  }
+
+  function setSqlPackData(pack: SqlPack) {
+    sqlPack.value = pack
+    if (!baselineSqlPack.value) {
+      baselineSqlPack.value = pack
+    }
+  }
+
+  function setBaselineSqlPack(pack: SqlPack) {
+    baselineSqlPack.value = pack
+  }
+
+  function markArtifactConfirmed(name: string) {
+    confirmedArtifacts.value.add(name)
+  }
+
+  function clearConfirmedArtifacts() {
+    confirmedArtifacts.value.clear()
+  }
+
+  function setReviewData(data: ReviewResult) {
+    review.value = data
+  }
+
+  function setDocumentData(data: ChangeDocument) {
+    document.value = data
+  }
+
   return {
     currentSpecId,
     currentSpecStatus,
@@ -93,5 +126,12 @@ export const useAppStore = defineStore('app', () => {
     activeSchema,
     setSpec,
     setNotFound,
+    setSpecData,
+    setSqlPackData,
+    setBaselineSqlPack,
+    markArtifactConfirmed,
+    clearConfirmedArtifacts,
+    setReviewData,
+    setDocumentData,
   }
 })
