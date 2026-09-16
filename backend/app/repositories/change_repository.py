@@ -5,7 +5,7 @@ from threading import RLock
 from typing import Protocol
 
 from app.core.errors import NotFoundError
-from app.domain.models import ChangeSpec, ReviewResult, SchemaInput, SqlPack
+from app.domain.models import ChangeDocument, ChangeSpec, ReviewResult, SchemaInput, SqlPack
 
 
 class ChangeRepository(Protocol):
@@ -23,6 +23,10 @@ class ChangeRepository(Protocol):
 
     def save_review(self, review: ReviewResult) -> None: ...
 
+    def save_change_document(self, document: ChangeDocument) -> None: ...
+
+    def get_change_document(self, spec_id: str) -> ChangeDocument: ...
+
     def get_review(self, spec_id: str) -> ReviewResult | None: ...
 
     def mark_review_stale(self, spec_id: str) -> None: ...
@@ -36,6 +40,7 @@ class InMemoryChangeRepository:
         self._schemas: dict[str, SchemaInput] = {}
         self._sql_packs: dict[str, SqlPack] = {}
         self._reviews: dict[str, ReviewResult] = {}
+        self._documents: dict[str, ChangeDocument] = {}
         self._lock = RLock()
 
     def create_spec(self, spec: ChangeSpec, schema_input: SchemaInput) -> None:
@@ -88,3 +93,14 @@ class InMemoryChangeRepository:
             review = self._reviews.get(spec_id)
             if review:
                 self._reviews[spec_id] = review.model_copy(update={"is_stale": True})
+
+    def save_change_document(self, document: ChangeDocument) -> None:
+        with self._lock:
+            self._documents[document.spec_id] = deepcopy(document)
+
+    def get_change_document(self, spec_id: str) -> ChangeDocument:
+        with self._lock:
+            try:
+                return deepcopy(self._documents[spec_id])
+            except KeyError as exc:
+                raise NotFoundError("ChangeDocument", spec_id) from exc

@@ -9,6 +9,8 @@ from app.domain.enums import (
     ArtifactName,
     CheckStatus,
     DBMS,
+    DocumentFieldKey,
+    DocumentFieldSource,
     Operation,
     Operator,
     RiskLevel,
@@ -216,3 +218,32 @@ class HealthResponse(APIModel):
     status: str
     service: str
     version: str
+
+
+class DocumentTemplateField(APIModel):
+    key: DocumentFieldKey
+    label: str = Field(min_length=1)
+    required: bool = True
+
+
+class GenerateChangeDocumentRequest(APIModel):
+    template_name: str = Field(default="DEFAULT")
+    fields: list[DocumentTemplateField] | None = None
+
+
+class ChangeDocumentField(APIModel):
+    key: DocumentFieldKey
+    label: str
+    value: Any | None = None
+    required: bool
+    source: DocumentFieldSource
+
+
+class ChangeDocument(APIModel):
+    spec_id: str
+    spec_version: int = Field(ge=1)
+    content_hash: str
+    sql_pack_revision: int = Field(ge=1)
+    template_name: str
+    fields: list[ChangeDocumentField]
+    generated_at: datetime

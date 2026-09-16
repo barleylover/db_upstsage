@@ -69,3 +69,25 @@ class ArtifactName(str, Enum):
     EXECUTION_SQL = "executionSql"
     VERIFICATION_SQL = "verificationSql"
     ROLLBACK_SQL = "rollbackSql"
+
+
+class DocumentFieldKey(str, Enum):
+    TITLE = "title"
+    ENVIRONMENT = "environment"
+    DATABASE = "database"
+    SCHEMA = "schema"
+    TARGET_TABLE = "targetTable"
+    OPERATION = "operation"
+    PREDICATES = "predicates"
+    MUTATIONS = "mutations"
+    EXPECTED_ROW_COUNT = "expectedRowCount"
+    PRECHECK_SQL = "precheckSql"
+    BACKUP_SQL = "backupSql"
+    EXECUTION_SQL = "executionSql"
+    VERIFICATION_SQL = "verificationSql"
+    ROLLBACK_SQL = "rollbackSql"
+
+
+class DocumentFieldSource(str, Enum):
+    CHANGE_SPEC = "CHANGE_SPEC"
+    SQL_PACK = "SQL_PACK"

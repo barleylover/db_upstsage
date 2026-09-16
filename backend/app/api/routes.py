@@ -4,15 +4,19 @@ from fastapi import APIRouter, Depends, Path, Request
 
 from app.domain.enums import ArtifactName
 from app.domain.models import (
+    ChangeDocument,
     ChangeSpec,
     ConfirmSpecRequest,
+    GenerateChangeDocumentRequest,
     InterpretChangeRequest,
     ReviewRequest,
     ReviewResult,
     SqlPack,
     UpdateSqlArtifactRequest,
 )
+
 from app.repositories.change_repository import ChangeRepository
+from app.services.change_document_service import generate_change_document
 from app.services.review_service import review_change
 from app.services.solar_client import SolarClient
 from app.services.spec_service import SpecService
@@ -115,3 +119,17 @@ def review_sql_pack(
     )
     repository.save_review(result)
     return result
+
+
+@api_router.post(
+    "/{spec_id}/change-document",
+    response_model=ChangeDocument,
+    status_code=201,
+    summary="Generate a change document from a confirmed spec and SQL pack",
+)
+def create_change_document(
+    spec_id: str,
+    payload: GenerateChangeDocumentRequest,
+    repository: ChangeRepository = Depends(get_repository),
+) -> ChangeDocument:
+    return generate_change_document(repository, spec_id, payload)
