@@ -65,6 +65,16 @@ def _where_clause(spec: ChangeSpec) -> str:
     return " AND\n  ".join(render_predicate(predicate) for predicate in predicates)
 
 
+def _where_clause_without_mutation_columns(spec: ChangeSpec) -> str:
+    predicates = sorted(
+        [p for p in spec.predicates if p.column.lower() not in {m.column.lower() for m in spec.mutations}],
+        key=lambda item: (item.column.lower(), item.operator.value, str(item.value)),
+    )
+    if not predicates:
+        raise DomainValidationError("WHERE_REQUIRED", "At least one predicate is required")
+    return " AND\n  ".join(render_predicate(predicate) for predicate in predicates)
+
+
 def _qualified_table(spec: ChangeSpec) -> str:
     return f"{quote_identifier(spec.schema)}.{quote_identifier(spec.target_table)}"
 
@@ -143,14 +153,7 @@ def generate_sql_pack(spec: ChangeSpec, schema_input: SchemaInput) -> SqlPack:
     )
     if spec.operation == Operation.UPDATE:
         execution = f"UPDATE {table}\nSET {_render_mutations(spec.mutations)}\nWHERE {where};"
-        postconditions = " AND\n  ".join(
-            f"{quote_identifier(mutation.column)} = {render_literal(mutation.value, mutation.value_type)}"
-            for mutation in sorted(spec.mutations, key=lambda item: item.column.lower())
-        )
-        verification = (
-            f"SELECT {', '.join(quote_identifier(column) for column in spec.identity_key_columns)}\n"
-            f"FROM {table}\nWHERE {where}\n  AND {postconditions};"
-        )
+        verification = _render_verification(spec, table)
     else:
         execution = f"DELETE FROM {table}\nWHERE {where};"
         verification = f"SELECT COUNT(*) AS remaining_rows\nFROM {table}\nWHERE {where};"
@@ -167,6 +170,21 @@ def generate_sql_pack(spec: ChangeSpec, schema_input: SchemaInput) -> SqlPack:
         content_hash=spec.content_hash,
         revision=1,
         updated_at=datetime.now(timezone.utc),
+    )
+
+
+def _render_verification(spec: ChangeSpec, table: str) -> str:
+    base_predicates = [p for p in spec.predicates if p.column.lower() not in {m.column.lower() for m in spec.mutations}]
+    if not base_predicates:
+        raise DomainValidationError("WHERE_REQUIRED", "At least one predicate is required")
+    base_where = " AND\n  ".join(render_predicate(predicate) for predicate in sorted(base_predicates, key=lambda item: (item.column.lower(), item.operator.value, str(item.value))))
+    postconditions = " AND\n  ".join(
+        f"{quote_identifier(mutation.column)} = {render_literal(mutation.value, mutation.value_type)}"
+        for mutation in sorted(spec.mutations, key=lambda item: item.column.lower())
+    )
+    return (
+        f"SELECT {', '.join(quote_identifier(column) for column in spec.identity_key_columns)}\n"
+        f"FROM {table}\nWHERE {base_where}\n  AND {postconditions};"
     )
 
 

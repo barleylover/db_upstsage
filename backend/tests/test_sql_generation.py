@@ -21,6 +21,20 @@ def test_generates_five_deterministic_sql_artifacts(env, golden_request):
     assert '"tenant_id" = 42' in pack["executionSql"]
     assert '"status" = \'pending\'' in pack["executionSql"]
     assert '"created_at" < \'2026-09-01T00:00:00+09:00\'' in pack["executionSql"]
+    verification = pack["verificationSql"]
+    assert '"status" = \'cancelled\'' in verification
+    assert '"tenant_id" = 42' in verification
+    assert '"created_at" < \'2026-09-01T00:00:00+09:00\'' in verification
+    assert '"status" = \'pending\'' not in verification
+
+
+def test_verification_sql_does_not_mix_pre_and_post_status(env, golden_request):
+    spec_id, pack = create_confirmed_pack(env, golden_request)
+    verification = pack["verificationSql"]
+    assert '"status" = \'cancelled\'' in verification
+    assert '"status" = \'pending\'' not in verification
+    assert '"tenant_id" = 42' in verification
+    assert '"created_at" < \'2026-09-01T00:00:00+09:00\'' in verification
 
 
 def test_sql_edit_increments_revision_and_stales_previous_review(env, golden_request):
