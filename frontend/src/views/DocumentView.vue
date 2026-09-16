@@ -182,7 +182,7 @@ function formatFieldValue(f: ChangeDocument['fields'][0]): string {
   if (typeof value === 'object') {
     if (Array.isArray(value)) {
       if (value.length && typeof value[0] === 'object') {
-        return value.map(formatPredicate).join('\n')
+        return (value as Parameters<typeof formatPredicate>[0][]).map(formatPredicate).join('\n')
       }
     }
     return JSON.stringify(value)

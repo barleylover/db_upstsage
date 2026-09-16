@@ -61,7 +61,7 @@
 
           <div class="sql-editor-wrap">
             <div class="sql-editor-gutter">
-              <span v-for="(line, idx) in currentLines" :key="idx" class="sql-line-num">{{ idx + 1 }}</span>
+              <span v-for="(_line, idx) in currentLines" :key="idx" class="sql-line-num">{{ idx + 1 }}</span>
             </div>
             <textarea
               class="sql-textarea mono"
@@ -130,7 +130,6 @@ type ArtifactKey = 'precheckSql' | 'backupSql' | 'executionSql' | 'verificationS
 
 const loading = ref(false)
 const saving = ref(false)
-const sqlEditorRef = ref<HTMLTextAreaElement | null>(null)
 
 const pack = computed(() => store.sqlPack)
 const evidence = computed(() => store.evidence)
@@ -202,10 +201,6 @@ function onSqlInput(event: Event) {
   sqlText.value = target.value
 }
 
-function syncSqlText() {
-  if (!pack.value) return
-  sqlText.value = artifactSql(artifactKey.value)
-}
 
 async function regenerate() {
   if (!specId.value) return

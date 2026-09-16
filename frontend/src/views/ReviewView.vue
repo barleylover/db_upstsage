@@ -53,8 +53,8 @@
               <tr v-for="row in matrixRows" :key="row.label">
                 <th>{{ row.label }}</th>
                 <td v-for="col in matrixCols" :key="col" class="matrix-cell" @click="selectMatrixCell(row.label, col)">
-                  <span class="cell-status" :class="matrixCellClass(row.cells[col])">
-                    {{ cellIcon(row.cells[col]) }}
+                  <span class="cell-status" :class="matrixCellClass(row.cells[col]?.status ?? '·')">
+                    {{ cellIcon(row.cells[col]?.status ?? '·') }}
                   </span>
                 </td>
               </tr>
@@ -124,8 +124,9 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import type { ReviewResult, SqlPack } from '@/api/client'
 
 const router = useRouter()
 const store = useAppStore()
@@ -164,94 +165,77 @@ interface MatrixCell { status: string; detail: string }
 
 interface MatrixRow { label: string; cells: Record<string, MatrixCell> }
 
+type MatrixCol = (typeof matrixCols)[number]
+type ReviewCheck = ReviewResult['checks'][number]
+
+const MATRIX_ROW_LABELS = ['Change Spec', '확인', '백업', '실행', '검증', '롤백', '문서'] as const
+
+const ARTIFACT_ROW: Record<string, string> = {
+  precheckSql: '확인',
+  backupSql: '백업',
+  executionSql: '실행',
+  verificationSql: '검증',
+  rollbackSql: '롤백',
+}
+
+// Backend check categories → matrix column.
+const CATEGORY_COL: Record<string, MatrixCol> = {
+  syntax_and_scope: '대상',
+  target_table: '대상',
+  schema: '대상',
+  target_scope: '조건',
+  predicate_consistency: '조건',
+  semantic_equivalence: '조건',
+  mutation_consistency: '변경값',
+  evidence: '검증',
+  operational_evidence: '검증',
+  verification: '검증',
+  rollback: '복구',
+  version: '버전',
+  stale: '버전',
+}
+
+function columnFor(check: ReviewCheck): MatrixCol {
+  const byCategory = CATEGORY_COL[check.category]
+  if (byCategory) return byCategory
+  const field = check.specField ?? ''
+  if (field.startsWith('predicates')) return '조건'
+  if (field.startsWith('mutations') || field.startsWith('operation')) return '변경값'
+  if (field.startsWith('identityKey')) return '키'
+  if (field.startsWith('expectedRowCount')) return '검증'
+  if (/version|hash|revision/i.test(check.ruleId + field + check.category)) return '버전'
+  return '대상'
+}
+
+function rowsFor(check: ReviewCheck): string[] {
+  const rows: string[] = []
+  if (check.ruleId.startsWith('D')) rows.push('문서')
+  if (check.sqlArtifact && ARTIFACT_ROW[check.sqlArtifact]) rows.push(ARTIFACT_ROW[check.sqlArtifact])
+  if (check.specField || check.ruleId.startsWith('M')) rows.push('Change Spec')
+  return rows.length ? rows : ['Change Spec']
+}
+
 const matrixRows = computed((): MatrixRow[] => {
   if (!review.value) return []
-  const bySql = new Map<string, typeof review.value.checks>()
-  const byField = new Map<string, typeof review.value.checks>()
+  const bucket = new Map<string, ReviewCheck[]>()
   for (const c of review.value.checks) {
-    if (c.sqlArtifact) {
-      const key = c.sqlArtifact
-      if (!bySql.has(key)) bySql.set(key, [])
-      bySql.get(key)!.push(c)
-    }
-    if (c.specField) {
-      const key = c.specField
-      if (!byField.has(key)) byField.set(key, [])
-      byField.get(key)!.push(c)
+    const col = columnFor(c)
+    for (const row of rowsFor(c)) {
+      const key = `${row}|${col}`
+      if (!bucket.has(key)) bucket.set(key, [])
+      bucket.get(key)!.push(c)
     }
   }
-
-  const artifactOrder = ['precheckSql', 'backupSql', 'executionSql', 'verificationSql', 'rollbackSql']
-  const artifactLabel = {
-    precheckSql: '확인',
-    backupSql: '백업',
-    executionSql: '실행',
-    verificationSql: '검증',
-    rollbackSql: '롤백',
-  }
-
-  const rows: MatrixRow[] = []
-
-  let worst = '·'
-  for (const key of artifactOrder) {
-    const checks = bySql.get(key) ?? []
-    worst = worstStatus(checks)
-    rows.push({
-      label: artifactLabel[key] ?? key,
-      cells: {
-        대상: { status: '·', detail: '' },
-        키: { status: '·', detail: '' },
-        조건: { status: '·', detail: '' },
-        변경값: { status: '·', detail: '' },
-        검증: { status: '·', detail: '' },
-        복구: { status: '·', detail: '' },
-        버전: { status: '·', detail: '' },
-      },
-    })
-  }
-
-  const specFieldRows = [
-    { label: 'Change Spec', field: 'predicates' },
-    { label: 'Change Spec', field: 'mutations' },
-    { label: 'Change Spec', field: 'identityKeyColumns' },
-    { label: 'Change Spec', field: 'operation' },
-    { label: 'Change Spec', field: 'expectedRowCount' },
-  ]
-
-  const seen = new Set<string>()
-  for (const field of specFieldRows) {
-    const key = field.field
-    const checks = byField.get(key) ?? []
-    const worst = worstStatus(checks)
-    const detail = worst !== '·' ? bestCheckMessage(checks) : ''
-    const cellKey = field.label === 'Change Spec' && field.field === 'predicates' ? '조건'
-      : field.label === 'Change Spec' && field.field === 'mutations' ? '변경값'
-      : field.label === 'Change Spec' && field.field === 'identityKeyColumns' ? '키'
-      : field.label === 'Change Spec' && field.field === 'operation' ? '대상'
-      : field.label === 'Change Spec' && field.field === 'expectedRowCount' ? '검증'
-      : '대상'
-    if (!seen.has(`${field.label}:${cellKey}`)) {
-      rows.push({
-        label: 'Change Spec',
-        cells: { 대상: '조건' === cellKey ? { status: worst, detail } : { status: '·', detail: '' },
-                 키: '키' === cellKey ? { status: worst, detail } : { status: '·', detail: '' },
-                 조건: '조건' === cellKey ? { status: worst, detail } : { status: '·', detail: '' },
-                 변경값: '변경값' === cellKey ? { status: worst, detail } : { status: '·', detail: '' },
-                 검증: '검증' === cellKey ? { status: worst, detail } : { status: '·', detail: '' },
-                 복구: { status: '·', detail: '' },
-                 버전: { status: '·', detail: '' } },
-      })
-      seen.add(`${field.label}:${cellKey}`)
+  return MATRIX_ROW_LABELS.map((label) => {
+    const cells = {} as Record<string, MatrixCell>
+    for (const col of matrixCols) {
+      const checks = bucket.get(`${label}|${col}`) ?? []
+      const status = worstStatus(checks)
+      const detail = status === '·' ? '' : bestCheckMessage(checks) || checks.map((c) => c.message).join(' / ')
+      cells[col] = { status, detail }
     }
-  }
-
-  const documentRow = {
-    label: '문서',
-    cells: { 대상: { status: '·', detail: '' }, 키: { status: '·', detail: '' }, 조건: { status: '·', detail: '' }, 변경값: { status: '·', detail: '' }, 검증: { status: '·', detail: '' }, 복구: { status: '·', detail: '' }, 버전: { status: '·', detail: '' } },
-  }
-  rows.push(documentRow)
-
-  return rows
+    return { label, cells }
+  })
 })
 
 function worstStatus(checks: { status: string }[]): string {
@@ -303,7 +287,7 @@ const diffSql = computed(() => {
   return unifiedDiff(base, current, diffTab.value)
 })
 
-function diffArtifactSql(pack: Awaited<ReturnType<typeof createSqlPack>> | undefined, tab: string): string {
+function diffArtifactSql(pack: SqlPack | null | undefined, tab: string): string {
   if (!pack) return ''
   if (tab === '확인') return pack.precheckSql
   if (tab === '백업') return pack.backupSql
@@ -354,12 +338,20 @@ const rationale = computed(() => {
     R003: '실행 근거',
     R004: '의미 동등성',
     M001: '버전 불일치',
+    D001: '문서 버전',
+    D002: '문서 대상 테이블',
+    D003: '문서 작업',
+    D004: '문서 조건',
+    D005: '문서 필수 항목',
+    D006: '문서 변경값',
+    D007: '문서 SQL',
+    D008: '문서 예상 건수',
   }
   return review.value.checks
     .slice()
     .sort((a, b) => {
-      const order = { FAIL: 0, REVIEW: 1, PASS: 2 }
-      return order[a.status] - order[b.status]
+      const order: Record<string, number> = { FAIL: 0, REVIEW: 1, PASS: 2 }
+      return (order[a.status] ?? 3) - (order[b.status] ?? 3)
     })
     .map((c) => ({
       ruleId: c.ruleId,

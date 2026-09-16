@@ -46,7 +46,7 @@
             <button class="composer-chip" :class="{ active: dbmsPopoverOpen }" @click="toggleDbmesPopover">
               <span class="composer-chip-label mono">{{ dbmsChipLabel }}</span>
             </button>
-            <div v-if="dbmesPopoverOpen" class="composer-popover" @click.stop>
+            <div v-if="dbmsPopoverOpen" class="composer-popover" @click.stop>
               <div class="composer-popover-head">DBMS</div>
               <div
                 v-for="dbms in supportedDbmses"
@@ -100,7 +100,7 @@ const error = ref('')
 const cancelled = computed(() => store.notFound)
 
 const schemaPopoverOpen = ref(false)
-const dbmesPopoverOpen = ref(false)
+const dbmsPopoverOpen = ref(false)
 
 const schemaList = computed(() => store.schemaList)
 const activeSchema = computed(() => store.activeSchema)
@@ -134,11 +134,11 @@ function dbmsLabel(dbms: string): string {
 
 function toggleSchemaPopover() {
   schemaPopoverOpen.value = !schemaPopoverOpen.value
-  dbmesPopoverOpen.value = false
+  dbmsPopoverOpen.value = false
 }
 
 function toggleDbmesPopover() {
-  dbmesPopoverOpen.value = !dbmesPopoverOpen.value
+  dbmsPopoverOpen.value = !dbmsPopoverOpen.value
   schemaPopoverOpen.value = false
 }
 
@@ -164,7 +164,7 @@ function selectDbms(dbms: string) {
     current.dbms = dbms as typeof current.dbms
     store.persistSchemaCatalog()
   }
-  dbmesPopoverOpen.value = false
+  dbmsPopoverOpen.value = false
 }
 
 async function submitRequest() {

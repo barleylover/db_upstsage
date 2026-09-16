@@ -118,6 +118,8 @@ export interface ChangeSpec {
   status: string
   contentHash: string
   originalRequest: string
+  dbms: string
+  environment: string
   database: string
   schema: string
   targetTable: string
@@ -180,7 +182,7 @@ export interface ChangeDocument {
   fields: Array<{
     key: string
     label: string
-    value: string
+    value: unknown
     required: boolean
     source: string
   }>

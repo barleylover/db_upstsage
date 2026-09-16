@@ -155,10 +155,10 @@ function simpleTemplateItems(): DocumentTemplateItem[] {
 
 function castTemplate(item: unknown): DocumentTemplate {
   const t = item as Record<string, unknown>
-  const items = (t.items ?? []).map((it: unknown) => ({
+  const items = ((t.items ?? []) as unknown[]).map((it: unknown) => ({
     name: String((it as Record<string, unknown>).name ?? ''),
     source: String((it as Record<string, unknown>).source ?? 'requestOrigin'),
-    value: (it as Record<string, unknown>).value ?? undefined,
+    value: typeof (it as Record<string, unknown>).value === 'string' ? ((it as Record<string, unknown>).value as string) : undefined,
   }))
   return {
     id: String(t.id ?? ''),
@@ -421,7 +421,7 @@ export const useAppStore = defineStore('app', () => {
       verdict: String(d.verdict ?? 'READY'),
       riskLevel: String(d.riskLevel ?? 'LOW'),
       isStale: Boolean(d.isStale ?? false),
-      checks: (d.checks ?? []).map((c: unknown) => {
+      checks: ((d.checks ?? []) as unknown[]).map((c: unknown) => {
         const o = c as Record<string, unknown>
         return {
           ruleId: String(o.ruleId ?? ''),
@@ -431,10 +431,10 @@ export const useAppStore = defineStore('app', () => {
           message: String(o.message ?? ''),
           expected: o.expected,
           actual: o.actual,
-          specField: o.specField,
-          sqlArtifact: o.sqlArtifact,
-          sqlLocation: o.sqlLocation,
-          suggestedFix: o.suggestedFix,
+          specField: typeof o.specField === 'string' ? o.specField : null,
+          sqlArtifact: typeof o.sqlArtifact === 'string' ? o.sqlArtifact : null,
+          sqlLocation: typeof o.sqlLocation === 'string' ? o.sqlLocation : null,
+          suggestedFix: typeof o.suggestedFix === 'string' ? o.suggestedFix : null,
         }
       }),
       disclaimer: String(d.disclaimer ?? ''),
@@ -468,7 +468,7 @@ export const useAppStore = defineStore('app', () => {
       contentHash: String(d.contentHash ?? ''),
       sqlPackRevision: Number(d.sqlPackRevision ?? 1),
       templateName: String(d.templateName ?? 'DEFAULT'),
-      fields: (d.fields ?? []).map((f: unknown) => {
+      fields: ((d.fields ?? []) as unknown[]).map((f: unknown) => {
         const o = f as Record<string, unknown>
         return {
           key: String(o.key ?? ''),
@@ -520,6 +520,3 @@ export const useAppStore = defineStore('app', () => {
   }
 })
 
-function serializeEvidence(ev: { executionPlanReviewed: boolean; indexReviewed: boolean; lockReviewed: boolean; concurrencyReviewed: boolean }): object {
-  return { ...ev }
-}

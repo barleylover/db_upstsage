@@ -71,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { RouterLink, useRouter, useRoute } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import type { SchemaCatalogEntry } from '@/types'
 

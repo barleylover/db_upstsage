@@ -71,21 +71,23 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
-import type { ChangeDocument, ReviewResult } from '@/api/client'
+import type { ChangeDocument, ChangeSpec, ReviewResult, SqlPack } from '@/api/client'
 
 const router = useRouter()
 const store = useAppStore()
 
-const packageSpec = computed((): {
-  spec: Awaited<ReturnType<typeof store.setSpec>>['spec']
-  sqlPack: Awaited<ReturnType<typeof store.setSqlPackData>>['sqlPack']
+interface ReviewPackage {
+  spec: ChangeSpec
+  sqlPack: SqlPack
   review: ReviewResult
   document: ChangeDocument
-} | null => {
+}
+
+const packageSpec = computed((): ReviewPackage | null => {
   if (!store.spec || !store.sqlPack || !store.review || !store.document) return null
   return {
-    spec: store.spec as Awaited<ReturnType<typeof store.setSpec>>['spec'],
-    sqlPack: store.sqlPack as Awaited<ReturnType<typeof store.setSqlPackData>>['sqlPack'],
+    spec: store.spec as ChangeSpec,
+    sqlPack: store.sqlPack as SqlPack,
     review: store.review,
     document: store.document,
   }
@@ -167,7 +169,7 @@ const previewLineCount = computed(() => {
   return preview.value.split('\n').length
 })
 
-function buildPackageMarkdown(spec: NonNullable<ReturnType<typeof packageSpec.get>> | null): string {
+function buildPackageMarkdown(spec: ReviewPackage | null): string {
   if (!spec) return ''
   const s = spec
   const lines: string[] = []
@@ -282,7 +284,7 @@ function formatDocumentField(f: ChangeDocument['fields'][0]): string {
   if (value === null || value === undefined) return '·'
   if (typeof value === 'string') return value
   if (Array.isArray(value)) {
-    return value.map(formatPredicate).join('; ')
+    return (value as Parameters<typeof formatPredicate>[0][]).map(formatPredicate).join('; ')
   }
   if (typeof value === 'object') {
     return JSON.stringify(value)
